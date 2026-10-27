@@ -7,29 +7,31 @@
       </div>
     </div>
 
+    <p v-if="errorMessage" class="state-message error">{{ errorMessage }}</p>
+
     <!-- Summary Cards -->
     <div class="summary-grid">
       <DashboardSummaryCard
         title="Total Pengajuan"
-        :value="5"
+        :value="summary?.total_perjalanan ?? 0"
         icon="📝"
       />
 
       <DashboardSummaryCard
         title="Menunggu Persetujuan"
-        :value="2"
+        :value="summary?.per_status.diajukan ?? 0"
         icon="◷"
       />
 
       <DashboardSummaryCard
         title="Perjalanan Aktif"
-        :value="1"
+        :value="summary?.per_status.berjalan ?? 0"
         icon="➤"
       />
 
       <DashboardSummaryCard
         title="Ringkasan Pengeluaran"
-        value="Rp 1.250.000"
+        :value="formatCurrency(summary?.total_biaya ?? 0)"
         icon="💰"
       />
     </div>
@@ -49,13 +51,16 @@
             </div>
             <NuxtLink to="/pegawai/rencana" class="view-all">Lihat Semua</NuxtLink>
           </div>
-          <div class="trip-list">
+
+          <p v-if="pageLoading" class="state-message">Memuat perjalanan...</p>
+          <p v-else-if="upcomingTrips.length === 0" class="state-message">Belum ada perjalanan mendatang.</p>
+          <div v-else class="trip-list">
             <div v-for="trip in upcomingTrips" :key="trip.id" class="trip-item">
               <div class="trip-top">
-                <span class="route">{{ trip.route }}</span>
-                <span class="date">{{ trip.date }}</span>
+                <span class="route">{{ trip.tujuan }}</span>
+                <span class="date">{{ formatDate(trip.tanggal_berangkat) }}</span>
               </div>
-              <p>{{ trip.description }}</p>
+              <p>{{ trip.keperluan }}</p>
             </div>
           </div>
         </div>
@@ -66,14 +71,17 @@
         <div class="section-header">
           <h2>Aktivitas Terbaru</h2>
         </div>
-        <div class="activity-list">
+
+        <p v-if="pageLoading" class="state-message">Memuat aktivitas...</p>
+        <p v-else-if="recentActivities.length === 0" class="state-message">Belum ada aktivitas perjalanan.</p>
+        <div v-else class="activity-list">
           <article v-for="activity in recentActivities" :key="activity.id" class="activity-item">
-            <div class="activity-icon">{{ activity.icon }}</div>
+            <div class="activity-icon">{{ activityIcon(activity.status) }}</div>
             <div class="activity-info">
-              <p>{{ activity.title }}</p>
+              <p>Perjalanan dinas ke {{ activity.tujuan }}</p>
             </div>
-            <span class="activity-status" :class="activity.statusClass">{{ activity.status }}</span>
-            <span class="activity-time">{{ activity.time }}</span>
+            <span class="activity-status" :class="tripStatusClass(activity.status)">{{ activity.status_label || tripStatusLabel(activity.status) }}</span>
+            <span class="activity-time">{{ relativeTime(activity.created_at) }}</span>
           </article>
         </div>
       </section>
@@ -103,17 +111,80 @@
 </template>
 
 <script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
 import DashboardSummaryCard from '~/components/dashboard/SummaryCard.vue'
+import { useDashboard } from '~/composables/useDashboard'
+import { useTrips } from '~/composables/useTrips'
+import type { TripStatus } from '~/types/api'
+import { formatCurrency, formatDate, tripStatusClass, tripStatusLabel } from '~/utils/format'
 
-const upcomingTrips = ref([
-  { id: 1, route: 'Jakarta - Bandung', date: '24 Jan 2026', description: 'Pertemuan dengan Direksi & Vendor lokal.' },
-  { id: 2, route: 'Jakarta - Surabaya', date: '05 Feb 2026', description: 'Training regional & evaluasi kuartal.' },
-])
+const {
+  summary,
+  error: dashboardError,
+  fetchDashboard,
+} = useDashboard()
 
-const recentActivities = ref([
-  { id: 1, icon: '🕐', title: 'Pengajuan perjalanan dinas ke Jakarta - Bandung', status: 'Menunggu Persetujuan', statusClass: 'waiting', time: 'Baru saja' },
-  { id: 2, icon: '✓', title: 'Perjalanan dinas Semarang selesai & laporan diunggah', status: 'Selesai', statusClass: 'completed', time: '1 hari lalu' },
-])
+const {
+  trips,
+  error: tripsError,
+  fetchTrips,
+} = useTrips()
+
+const pageLoading = ref(true)
+
+const errorMessage = computed(() => dashboardError.value ?? tripsError.value)
+
+const upcomingTrips = computed(() => {
+  return trips.value
+    .filter(trip => trip.status === 'disetujui' || trip.status === 'berjalan')
+    .slice()
+    .sort((a, b) => a.tanggal_berangkat.localeCompare(b.tanggal_berangkat))
+})
+
+const recentActivities = computed(() => summary.value?.terbaru ?? [])
+
+const activityIcon = (status: TripStatus): string => {
+  switch (status) {
+    case 'selesai':
+    case 'lengkap':
+    case 'disetujui':
+      return '✓'
+    case 'berjalan':
+      return '➤'
+    case 'diajukan':
+      return '🕐'
+    case 'ditolak':
+      return '✕'
+    default:
+      return '📝'
+  }
+}
+
+const relativeTime = (value: string): string => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return formatDate(value)
+
+  const diffMinutes = Math.floor((Date.now() - date.getTime()) / 60000)
+
+  if (diffMinutes < 1) return 'Baru saja'
+  if (diffMinutes < 60) return `${diffMinutes} menit lalu`
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `${diffHours} jam lalu`
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 30) return `${diffDays} hari lalu`
+
+  return formatDate(value)
+}
+
+onMounted(async () => {
+  try {
+    await Promise.allSettled([fetchDashboard(), fetchTrips()])
+  } finally {
+    pageLoading.value = false
+  }
+})
 </script>
 
 <style scoped>

@@ -10,6 +10,25 @@ export interface User {
   avatar?: string
 }
 
+interface ApiUser {
+  id: string | number
+  name: string
+  email: string
+  department?: string | null
+  role?: string | null
+  roles?: string[] | null
+}
+
+interface LoginResponse {
+  token: string
+  user: ApiUser
+}
+
+interface ApiErrorData {
+  message?: string
+  errors?: Record<string, string[]>
+}
+
 const isUserRole = (role: unknown): role is UserRole =>
   role === 'admin'
   || role === 'finance'
@@ -18,130 +37,157 @@ const isUserRole = (role: unknown): role is UserRole =>
   || role === 'atasan'
 
 const STORAGE_KEY = 'eduabsen_user'
+const TOKEN_KEY = 'eduabsen_token'
 
-const DEFAULT_USERS: Record<string, User> = {
-  'admin@eduabsen.com': {
-    id: '1',
-    name: 'Deva Fauzan Nuraqli',
-    email: 'admin@eduabsen.com',
-    role: 'admin',
-    department: 'IT',
-    position: 'Administrator',
-  },
-  'finance@eduabsen.com': {
-    id: '2',
-    name: 'Budi Santoso',
-    email: 'finance@eduabsen.com',
-    role: 'finance',
-    department: 'Finance',
-    position: 'Staff Keuangan',
-  },
-  'hrd@eduabsen.com': {
-    id: '3',
-    name: 'Dewi Lestari',
-    email: 'hrd@eduabsen.com',
-    role: 'hrd',
-    department: 'HRD',
-    position: 'Staff HRD',
-  },
-  'pegawai@eduabsen.com': {
-    id: '4',
-    name: 'Andi Saputra',
-    email: 'pegawai@eduabsen.com',
-    role: 'pegawai',
-    department: 'Marketing',
-    position: 'Staff Marketing',
-  },
-  'atasan@eduabsen.com': {
-    id: '5',
-    name: 'Atasan Demo',
-    email: 'atasan@eduabsen.com',
-    role: 'atasan',
-    department: 'Manajemen',
-    position: 'Atasan',
-  },
+const toUser = (payload: ApiUser): User => {
+  const candidates = [payload.role, ...(payload.roles ?? [])]
+  const role = candidates.find((value): value is UserRole => isUserRole(value))
+
+  if (!role) {
+    throw new Error('Role pengguna tidak dikenali. Hubungi administrator.')
+  }
+
+  return {
+    id: String(payload.id),
+    name: payload.name,
+    email: payload.email,
+    role,
+    department: payload.department ?? undefined,
+  }
+}
+
+const toErrorMessage = (error: unknown): string => {
+  const data = (error as { data?: ApiErrorData }).data
+
+  if (data?.errors) {
+    const firstError = Object.values(data.errors).flat()[0]
+    if (typeof firstError === 'string' && firstError) {
+      return firstError
+    }
+  }
+
+  if (typeof data?.message === 'string' && data.message) {
+    return data.message
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return 'Login gagal. Silakan coba lagi.'
+}
+
+const isValidStoredUser = (value: unknown): value is User => {
+  if (!value || typeof value !== 'object') return false
+
+  const candidate = value as Partial<User>
+
+  return typeof candidate.id === 'string'
+    && typeof candidate.name === 'string'
+    && typeof candidate.email === 'string'
+    && isUserRole(candidate.role)
 }
 
 export const useAuth = () => {
+  const config = useRuntimeConfig()
+  const apiBase = config.public.apiBase as string
+
   const user = useState<User | null>('user', () => null)
+  const token = useState<string | null>('auth_token', () => null)
   const isAuthenticated = useState<boolean>('isAuthenticated', () => false)
 
-  const login = (email: string, password: string): Promise<User> => {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        const foundUser = DEFAULT_USERS[email.toLowerCase()]
-        if (foundUser && password === 'password123') {
-          user.value = { ...foundUser }
-          isAuthenticated.value = true
-          if (import.meta.client) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(foundUser))
-          }
-          resolve(foundUser)
-        } else {
-          reject(new Error('Email atau password salah'))
-        }
-      }, 500)
-    })
+  const persistSession = (sessionUser: User, sessionToken: string) => {
+    if (!import.meta.client) return
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessionUser))
+    localStorage.setItem(TOKEN_KEY, sessionToken)
   }
 
-  const register = (userData: Omit<User, 'id'>): Promise<User> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const newUser: User = {
-          ...userData,
-          id: Date.now().toString(),
-        }
-        user.value = newUser
-        isAuthenticated.value = true
-        if (import.meta.client) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser))
-        }
-        resolve(newUser)
-      }, 500)
-    })
-  }
-
-  const logout = () => {
+  const clearSession = () => {
     user.value = null
+    token.value = null
     isAuthenticated.value = false
+
     if (import.meta.client) {
       localStorage.removeItem(STORAGE_KEY)
+      localStorage.removeItem(TOKEN_KEY)
     }
-    navigateTo('/admin/login')
+  }
+
+  const login = async (email: string, password: string): Promise<User> => {
+    try {
+      const response = await $fetch<LoginResponse>('/login', {
+        baseURL: apiBase,
+        method: 'POST',
+        body: { email, password },
+      })
+
+      const loggedInUser = toUser(response.user)
+
+      user.value = loggedInUser
+      token.value = response.token
+      isAuthenticated.value = true
+      persistSession(loggedInUser, response.token)
+
+      return loggedInUser
+    } catch (error) {
+      throw new Error(toErrorMessage(error))
+    }
+  }
+
+  // Registrasi belum tersedia di API. Akun dibuat oleh administrator.
+  const register = async (_userData: Omit<User, 'id'>): Promise<User> => {
+    throw new Error('Registrasi belum tersedia. Silakan hubungi administrator.')
+  }
+
+  const logout = async () => {
+    const activeToken = token.value
+
+    clearSession()
+
+    if (activeToken) {
+      try {
+        await $fetch('/logout', {
+          baseURL: apiBase,
+          method: 'POST',
+          headers: { Authorization: `Bearer ${activeToken}` },
+        })
+      } catch {
+        // Token mungkin sudah kedaluwarsa; sesi lokal tetap dibersihkan.
+      }
+    }
+
+    await navigateTo('/admin/login')
   }
 
   const initAuth = () => {
-    if (import.meta.client) {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(stored)
-        } catch {
-          localStorage.removeItem(STORAGE_KEY)
-          return
-        }
+    if (!import.meta.client) return
+    if (user.value && token.value) return
 
-        if (
-          !parsed
-          || typeof parsed !== 'object'
-          || !('id' in parsed)
-          || !('name' in parsed)
-          || !('email' in parsed)
-          || !('role' in parsed)
-          || typeof parsed.id !== 'string'
-          || typeof parsed.name !== 'string'
-          || typeof parsed.email !== 'string'
-          || !isUserRole(parsed.role)
-        ) {
-          localStorage.removeItem(STORAGE_KEY)
-          return
-        }
+    const storedUser = localStorage.getItem(STORAGE_KEY)
+    const storedToken = localStorage.getItem(TOKEN_KEY)
 
-        user.value = parsed
-        isAuthenticated.value = true
-      }
+    if (!storedUser || !storedToken) {
+      clearSession()
+      return
     }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(storedUser)
+    } catch {
+      clearSession()
+      return
+    }
+
+    if (!isValidStoredUser(parsed)) {
+      clearSession()
+      return
+    }
+
+    user.value = parsed
+    token.value = storedToken
+    isAuthenticated.value = true
   }
 
   const hasRole = (roles: UserRole | UserRole[]) => {
@@ -161,11 +207,13 @@ export const useAuth = () => {
 
   return {
     user: readonly(user),
+    token: readonly(token),
     isAuthenticated: readonly(isAuthenticated),
     login,
     register,
     logout,
     initAuth,
+    clearSession,
     hasRole,
     getInitials,
   }

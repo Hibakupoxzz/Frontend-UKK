@@ -43,11 +43,13 @@
 
         <select v-model="selectedStatus">
           <option value="">Semua Status</option>
-          <option value="Disetujui">Disetujui</option>
-          <option value="Menunggu">Menunggu</option>
-          <option value="Ditolak">Ditolak</option>
-          <option value="Selesai">Selesai</option>
-          <option value="Dalam Perjalanan">Dalam Perjalanan</option>
+          <option value="draft">Draft</option>
+          <option value="diajukan">Menunggu</option>
+          <option value="disetujui">Disetujui</option>
+          <option value="ditolak">Ditolak</option>
+          <option value="berjalan">Dalam Perjalanan</option>
+          <option value="selesai">Selesai</option>
+          <option value="lengkap">Lengkap</option>
         </select>
       </div>
 
@@ -90,16 +92,38 @@
           </thead>
 
           <tbody>
+            <tr v-if="loading">
+              <td colspan="7" class="table-state">
+                Memuat data perjalanan...
+              </td>
+            </tr>
+
+            <tr v-else-if="error">
+              <td colspan="7" class="table-state table-error">
+                {{ error }}
+              </td>
+            </tr>
+
+            <tr v-else-if="filteredTrips.length === 0">
+              <td colspan="7" class="table-state">
+                Tidak ada perjalanan yang sesuai dengan filter.
+              </td>
+            </tr>
+
             <tr
               v-for="(trip, index) in filteredTrips"
+              v-else-if="filteredTrips.length > 0"
               :key="trip.id"
             >
               <td>{{ index + 1 }}</td>
 
               <td>
-                <a href="#" class="destination">
+                <NuxtLink
+                  :to="{ path: '/admin/DetailPerjalanan', query: { id: trip.id } }"
+                  class="destination"
+                >
                   {{ trip.destination }}
-                </a>
+                </NuxtLink>
               </td>
 
               <td>{{ trip.startDate }}</td>
@@ -115,14 +139,17 @@
                   class="status-badge"
                   :class="trip.statusClass"
                 >
-                  {{ trip.status }}
+                  {{ trip.statusLabel }}
                 </span>
               </td>
 
               <td>
-                <button class="detail-button">
+                <NuxtLink
+                  :to="{ path: '/admin/DetailPerjalanan', query: { id: trip.id } }"
+                  class="detail-button"
+                >
                   Detail
-                </button>
+                </NuxtLink>
               </td>
             </tr>
           </tbody>
