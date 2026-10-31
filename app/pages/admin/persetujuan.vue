@@ -21,22 +21,44 @@
         :class="{ active: activeTab === 'waiting' }"
         @click="activeTab = 'waiting'"
       >
-        Menunggu Persetujuan
+        Menunggu Persetujuan <span class="tab-count">{{ tabCounts.waiting }}</span>
       </button>
 
       <button
         :class="{ active: activeTab === 'approved' }"
         @click="activeTab = 'approved'"
       >
-        Disetujui
+        Disetujui <span class="tab-count">{{ tabCounts.approved }}</span>
       </button>
 
       <button
         :class="{ active: activeTab === 'rejected' }"
         @click="activeTab = 'rejected'"
       >
-        Ditolak
+        Ditolak <span class="tab-count">{{ tabCounts.rejected }}</span>
       </button>
+    </div>
+
+    <div v-if="error || actionError" class="data-error" role="alert">
+      {{ actionError || error }}
+    </div>
+
+    <!-- Reject Panel -->
+    <div v-if="rejectingId" class="reject-panel">
+      <p class="reject-title">Tolak pengajuan {{ rejectingName }}</p>
+      <textarea
+        v-model="rejectNote"
+        rows="3"
+        placeholder="Tulis alasan penolakan (wajib)..."
+      />
+      <div class="reject-actions">
+        <button class="reject-cancel" type="button" :disabled="actionLoadingId !== null" @click="cancelReject">
+          Batal
+        </button>
+        <button class="reject-confirm" type="button" :disabled="actionLoadingId !== null" @click="confirmReject">
+          {{ actionLoadingId !== null ? 'Memproses...' : 'Konfirmasi Tolak' }}
+        </button>
+      </div>
     </div>
 
     <!-- Approval Card -->
@@ -85,24 +107,36 @@
         >
           <button
             class="reject-button"
-            @click="rejectRequest(request)"
+            :disabled="actionLoadingId === request.id"
+            @click="startReject(request)"
           >
             Tolak
           </button>
 
           <button
             class="approve-button"
+            :disabled="actionLoadingId === request.id"
             @click="approveRequest(request)"
           >
-            Setujui
+            {{ actionLoadingId === request.id ? 'Memproses...' : 'Setujui' }}
           </button>
+        </div>
+
+        <div v-else class="request-status">
+          <span class="status-badge" :class="request.statusClass">{{ request.statusLabel }}</span>
         </div>
 
       </div>
 
       <!-- Empty -->
       <div
-        v-if="filteredRequests.length === 0"
+        v-if="loading && filteredRequests.length === 0"
+        class="empty-state"
+      >
+        Memuat data persetujuan...
+      </div>
+      <div
+        v-else-if="filteredRequests.length === 0"
         class="empty-state"
       >
         Tidak ada data persetujuan.
@@ -114,11 +148,11 @@
     <div class="approval-footer">
 
       <span>
-        Menampilkan {{ filteredRequests.length }} dari 5 data
+        Menampilkan {{ filteredRequests.length }} dari {{ requests.length }} data
       </span>
 
-      <button>
-        Lihat Semua
+      <button type="button" :disabled="loading" @click="refresh">
+        {{ loading ? 'Memuat...' : 'Muat Ulang' }}
       </button>
 
     </div>
@@ -126,82 +160,143 @@
   </div>
 </template>
 
-<script setup>
-import { computed, ref } from 'vue'
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import type { TripStatus } from '~/types/api'
+import { useTrips } from '~/composables/useTrips'
+import { useApprovals } from '~/composables/useApprovals'
+import { apiErrorMessage } from '~/composables/useApi'
+import { formatDateRange, tripStatusClass, tripStatusLabel } from '~/utils/format'
 
-const activeTab = ref('waiting')
+type Tab = 'waiting' | 'approved' | 'rejected'
 
-const requests = ref([
-  {
-    id: 1,
-    name: 'Deva Fauzan Nuraqli',
-    position: 'Staff Marketing',
-    route: 'Jakarta - Bandung',
-    purpose: 'Meeting dengan Client A',
-    date: '21 Mei 2026 (3 hari)',
-    status: 'waiting',
-    initial: 'R',
-    avatarClass: 'red'
-  },
-  {
-    id: 2,
-    name: 'Andi Saputra',
-    position: 'Staff Sales',
-    route: 'Jakarta - Surabaya',
-    purpose: 'Training & Workshop',
-    date: '20 Mei 2026 (4 hari)',
-    status: 'waiting',
-    initial: 'A',
-    avatarClass: 'blue'
-  },
-  {
-    id: 3,
-    name: 'Dewi Lestari',
-    position: 'Staff HRD',
-    route: 'Jakarta - Yogyakarta',
-    purpose: 'Rekrutmen & Interview',
-    date: '25 Mei 2026 (2 hari)',
-    status: 'waiting',
-    initial: 'D',
-    avatarClass: 'orange'
-  },
-  {
-    id: 4,
-    name: 'Budi Santoso',
-    position: 'Staff Finance',
-    route: 'Jakarta - Semarang',
-    purpose: 'Audit Cabang',
-    date: '27 Mei 2026 (2 hari)',
-    status: 'approved',
-    initial: 'B',
-    avatarClass: 'green'
-  },
-  {
-    id: 5,
-    name: 'Sinta Maharani',
-    position: 'Staff Operasional',
-    route: 'Jakarta - Medan',
-    purpose: 'Koordinasi Operasional',
-    date: '30 Mei 2026 (3 hari)',
-    status: 'rejected',
-    initial: 'S',
-    avatarClass: 'purple'
+interface ApprovalRequest {
+  id: number
+  userId: number | null
+  name: string
+  position: string
+  route: string
+  purpose: string
+  date: string
+  status: TripStatus
+  statusLabel: string
+  statusClass: string
+  initial: string
+  avatarClass: string
+}
+
+const { trips, loading, error, fetchTrips } = useTrips()
+const { approve, reject } = useApprovals()
+const { user } = useAuth()
+
+const activeTab = ref<Tab>('waiting')
+const actionLoadingId = ref<number | null>(null)
+const actionError = ref('')
+const rejectingId = ref<number | null>(null)
+const rejectingName = ref('')
+const rejectNote = ref('')
+
+const TAB_STATUS: Record<Tab, TripStatus> = {
+  waiting: 'diajukan',
+  approved: 'disetujui',
+  rejected: 'ditolak',
+}
+
+const AVATAR_CLASSES = ['red', 'blue', 'orange', 'green', 'purple']
+
+const avatarClass = (name: string) => AVATAR_CLASSES[name.charCodeAt(0) % AVATAR_CLASSES.length] ?? 'blue'
+
+const dayCount = (start: string, end: string) => {
+  const startDate = new Date(start).getTime()
+  const endDate = new Date(end).getTime()
+  if (Number.isNaN(startDate) || Number.isNaN(endDate)) return 1
+  return Math.max(1, Math.round((endDate - startDate) / 86_400_000) + 1)
+}
+
+const requests = computed<ApprovalRequest[]>(() => trips.value.map((trip) => ({
+  id: trip.id,
+  userId: trip.user?.id ?? null,
+  name: trip.user?.name ?? '—',
+  position: trip.user?.department ?? '—',
+  route: trip.tujuan,
+  purpose: trip.keperluan,
+  date: `${formatDateRange(trip.tanggal_berangkat, trip.tanggal_pulang)} (${dayCount(trip.tanggal_berangkat, trip.tanggal_pulang)} hari)`,
+  status: trip.status,
+  statusLabel: trip.statusLabel ?? tripStatusLabel(trip.status),
+  statusClass: tripStatusClass(trip.status),
+  initial: (trip.user?.name ?? '?').charAt(0).toUpperCase(),
+  avatarClass: avatarClass(trip.user?.name ?? '?'),
+})))
+
+const filteredRequests = computed(() => requests.value.filter((request) => {
+  if (request.status !== TAB_STATUS[activeTab.value]) return false
+  if (activeTab.value === 'waiting' && String(request.userId) === String(user.value?.id)) return false
+  return true
+}))
+
+const tabCounts = computed(() => ({
+  waiting: requests.value.filter((request) => request.status === 'diajukan' && String(request.userId) !== String(user.value?.id)).length,
+  approved: requests.value.filter((request) => request.status === 'disetujui').length,
+  rejected: requests.value.filter((request) => request.status === 'ditolak').length,
+}))
+
+const refresh = async () => {
+  await fetchTrips({ page: 1 })
+}
+
+const approveRequest = async (request: ApprovalRequest) => {
+  actionError.value = ''
+  actionLoadingId.value = request.id
+
+  try {
+    await approve(request.id)
+    await refresh()
+  } catch (err) {
+    actionError.value = apiErrorMessage(err, 'Gagal menyetujui pengajuan.')
+  } finally {
+    actionLoadingId.value = null
   }
-])
+}
 
-const filteredRequests = computed(() => {
-  return requests.value.filter(
-    request => request.status === activeTab.value
-  )
+const startReject = (request: ApprovalRequest) => {
+  actionError.value = ''
+  rejectingId.value = request.id
+  rejectingName.value = request.name
+  rejectNote.value = ''
+}
+
+const cancelReject = () => {
+  rejectingId.value = null
+  rejectingName.value = ''
+  rejectNote.value = ''
+}
+
+const confirmReject = async () => {
+  if (!rejectingId.value) return
+
+  actionError.value = ''
+
+  if (!rejectNote.value.trim()) {
+    actionError.value = 'Alasan penolakan wajib diisi.'
+    return
+  }
+
+  actionLoadingId.value = rejectingId.value
+
+  try {
+    await reject(rejectingId.value, rejectNote.value.trim())
+    cancelReject()
+    await refresh()
+  } catch (err) {
+    actionError.value = apiErrorMessage(err, 'Gagal menolak pengajuan.')
+  } finally {
+    actionLoadingId.value = null
+  }
+}
+
+onMounted(() => {
+  refresh().catch(() => {})
 })
-
-const approveRequest = (request) => {
-  request.status = 'approved'
-}
-
-const rejectRequest = (request) => {
-  request.status = 'rejected'
-}
 </script>
 
 <style scoped>
@@ -315,6 +410,117 @@ const rejectRequest = (request) => {
   height: 2px;
 
   background: var(--primary);
+}
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 17px;
+  height: 17px;
+
+  margin-left: 4px;
+  padding: 0 4px;
+
+  border-radius: 20px;
+
+  background: #eef1f7;
+  color: #667085;
+
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.tabs button.active .tab-count {
+  background: #e8efff;
+  color: var(--primary);
+}
+
+.data-error {
+  margin-bottom: 16px;
+  padding: 11px 14px;
+
+  border: 1px solid #f4c7c7;
+  border-radius: 8px;
+
+  background: #fff5f5;
+  color: #b42318;
+
+  font-size: 10px;
+}
+
+/* =========================
+   REJECT PANEL
+========================= */
+
+.reject-panel {
+  margin-bottom: 18px;
+  padding: 15px 16px;
+
+  background: var(--white);
+  border: 1px solid #f4c7c7;
+  border-radius: 10px;
+}
+
+.reject-title {
+  margin: 0 0 9px;
+
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.reject-panel textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+
+  border: 1px solid #dce2eb;
+  border-radius: 6px;
+
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+  resize: vertical;
+}
+
+.reject-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+
+  margin-top: 10px;
+}
+
+.reject-actions button {
+  min-height: 30px;
+  padding: 0 13px;
+
+  border-radius: 5px;
+
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.reject-cancel {
+  border: 1px solid #dce2eb;
+  background: var(--white);
+  color: #667085;
+}
+
+.reject-confirm {
+  border: 1px solid #ef4444;
+  background: #ef4444;
+  color: #fff;
+}
+
+.reject-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* =========================
@@ -467,6 +673,37 @@ const rejectRequest = (request) => {
   cursor: pointer;
 }
 
+.request-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.request-status {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+
+  padding: 5px 9px;
+
+  border-radius: 5px;
+
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-badge.draft { background: #eef1f7; color: #667085; }
+.status-badge.waiting { background: #fff3df; color: #ef9b16; }
+.status-badge.approved { background: #dff7ef; color: #18a77c; }
+.status-badge.rejected { background: #ffe8e8; color: #ef5350; }
+.status-badge.ongoing { background: #fff3df; color: #ef9b16; }
+.status-badge.completed { background: #dff7ef; color: #18a77c; }
+
 .reject-button {
   border: 1px solid #ff5b5b;
 
@@ -611,6 +848,12 @@ const rejectRequest = (request) => {
     gap: 8px;
 
     margin-top: 12px;
+  }
+
+  .request-status {
+    grid-column: 2;
+
+    margin-top: 10px;
   }
 
   .request-actions button {

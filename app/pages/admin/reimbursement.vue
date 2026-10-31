@@ -5,7 +5,7 @@
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
       <span>›</span>
-      <NuxtLink to="/reimbursement">Reimbursement</NuxtLink>
+      <NuxtLink to="/admin/reimbursement">Reimbursement</NuxtLink>
       <span>›</span>
       <strong>Ajukan Baru</strong>
     </div>
@@ -22,7 +22,19 @@
 
       <h2>Formulir Klaim Pengeluaran</h2>
 
-      <form @submit.prevent="submitForm">
+      <div v-if="error" class="form-message error" role="alert">{{ error }}</div>
+
+      <div v-if="loadingTrips" class="form-state">Memuat perjalanan Anda...</div>
+
+      <div v-else-if="eligibleTrips.length === 0" class="form-state">
+        <p>
+          Reimbursement hanya dapat dicatat pada perjalanan milik Anda yang
+          berstatus <strong>Berlangsung</strong> atau <strong>Selesai</strong>.
+        </p>
+        <NuxtLink to="/admin/perjalanan-dinas" class="state-link">Lihat Perjalanan Dinas</NuxtLink>
+      </div>
+
+      <form v-else @submit.prevent="submitForm">
 
         <!-- Perjalanan + Tanggal -->
         <div class="form-row">
@@ -33,17 +45,10 @@
               <span>*</span>
             </label>
 
-            <select v-model="form.trip">
-              <option value="Jakarta - Bandung (12 Mei 2026)">
-                Jakarta - Bandung (12 Mei 2026)
-              </option>
-
-              <option value="Jakarta - Surabaya (20 Mei 2026)">
-                Jakarta - Surabaya (20 Mei 2026)
-              </option>
-
-              <option value="Jakarta - Yogyakarta (25 Mei 2026)">
-                Jakarta - Yogyakarta (25 Mei 2026)
+            <select v-model="form.tripId">
+              <option value="" disabled>Pilih perjalanan</option>
+              <option v-for="trip in eligibleTrips" :key="trip.id" :value="trip.id">
+                {{ trip.tujuan }} ({{ formatDate(trip.tanggal_berangkat) }})
               </option>
             </select>
           </div>
@@ -70,11 +75,10 @@
           </label>
 
           <select v-model="form.category">
-            <option value="Penginapan">Penginapan</option>
-            <option value="Transportasi">Transportasi</option>
-            <option value="Makanan">Makanan</option>
-            <option value="Tiket">Tiket</option>
-            <option value="Lainnya">Lainnya</option>
+            <option value="penginapan">Penginapan</option>
+            <option value="transportasi">Transportasi</option>
+            <option value="konsumsi">Konsumsi</option>
+            <option value="lainnya">Lainnya</option>
           </select>
         </div>
 
@@ -101,16 +105,17 @@
             </label>
 
             <input
-              v-model="form.amount"
-              type="text"
-              placeholder="Rp 0"
+              v-model.number="form.amount"
+              type="number"
+              min="1"
+              placeholder="0"
             />
           </div>
 
           <div class="form-group">
             <label>
               Upload Bukti
-              <span>*</span>
+              <small>(Opsional)</small>
             </label>
 
             <div class="upload-area">
@@ -160,6 +165,7 @@
           <button
             type="button"
             class="cancel-button"
+            :disabled="submitting"
             @click="cancelForm"
           >
             Batal
@@ -168,8 +174,9 @@
           <button
             type="submit"
             class="submit-button"
+            :disabled="submitting"
           >
-            Kirim
+            {{ submitting ? 'Mengirim...' : 'Kirim' }}
           </button>
 
         </div>
@@ -181,46 +188,113 @@
   </div>
 </template>
 
-<script setup>
-import { ref } from 'vue'
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import type { ExpenseType } from '~/types/api'
+import { useAuth } from '~/composables/useAuth'
+import { useTrips } from '~/composables/useTrips'
+import { useExpenses } from '~/composables/useExpenses'
+import { apiErrorMessage } from '~/composables/useApi'
+import { formatDate } from '~/utils/format'
 
-const form = ref({
-  trip: 'Jakarta - Bandung (12 Mei 2026)',
-  date: '2026-05-13',
-  category: 'Penginapan',
-  description: 'Biaya hotel selama perjalanan dinas',
-  amount: 'Rp 750.000',
-  file: null
+const router = useRouter()
+const { user } = useAuth()
+const { trips, loading: loadingTrips, error: tripsError, fetchTrips } = useTrips()
+const { createExpense, uploadReceipt, error: expenseError } = useExpenses()
+
+const today = new Date().toISOString().slice(0, 10)
+
+const form = reactive<{
+  tripId: number | ''
+  date: string
+  category: ExpenseType
+  description: string
+  amount: number
+  file: File | null
+}>({
+  tripId: '',
+  date: today,
+  category: 'penginapan',
+  description: '',
+  amount: 0,
+  file: null,
 })
 
-const handleFile = (event) => {
-  const file = event.target.files[0]
+const submitting = ref(false)
+const submitError = ref('')
 
-  if (file) {
-    form.value.file = file
-  }
+const error = computed(() => tripsError.value ?? expenseError.value ?? submitError.value ?? '')
+
+const eligibleTrips = computed(() => trips.value.filter((trip) => {
+  const owned = user.value ? String(trip.user?.id ?? '') === String(user.value.id) : false
+  return owned && (trip.status === 'berjalan' || trip.status === 'selesai')
+}))
+
+const handleFile = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  form.file = target.files?.[0] ?? null
 }
 
 const removeFile = () => {
-  form.value.file = null
+  form.file = null
 }
 
-const submitForm = () => {
-  console.log('Data reimbursement:', form.value)
-
-  alert('Pengajuan reimbursement berhasil dikirim.')
+const resetForm = () => {
+  form.tripId = ''
+  form.date = today
+  form.category = 'penginapan'
+  form.description = ''
+  form.amount = 0
+  form.file = null
 }
 
 const cancelForm = () => {
-  form.value = {
-    trip: 'Jakarta - Bandung (12 Mei 2026)',
-    date: '2026-05-13',
-    category: 'Penginapan',
-    description: 'Biaya hotel selama perjalanan dinas',
-    amount: 'Rp 750.000',
-    file: null
+  router.push('/admin/perjalanan-dinas')
+}
+
+const submitForm = async () => {
+  submitError.value = ''
+
+  if (!form.tripId || !form.date || !form.description.trim() || form.amount <= 0) {
+    submitError.value = 'Lengkapi perjalanan, tanggal, deskripsi, dan jumlah pengeluaran.'
+    return
+  }
+
+  submitting.value = true
+
+  try {
+    const expense = await createExpense(form.tripId, {
+      jenis: form.category,
+      jumlah: form.amount,
+      tanggal: form.date,
+      keterangan: form.description.trim(),
+    })
+
+    if (form.file) {
+      try {
+        await uploadReceipt(expense.id, form.file)
+      } catch {
+        // bukti opsional; pengeluaran tetap tersimpan
+      }
+    }
+
+    const tripId = form.tripId
+    resetForm()
+    await router.push({ path: '/admin/DetailPerjalanan', query: { id: tripId } })
+  } catch (err) {
+    submitError.value = apiErrorMessage(err, 'Gagal menyimpan pengeluaran.')
+  } finally {
+    submitting.value = false
   }
 }
+
+onMounted(async () => {
+  try {
+    await fetchTrips({ per_page: 100 })
+  } catch {
+    // pesan error sudah disimpan oleh composable
+  }
+})
 </script>
 
 <style scoped>
@@ -313,6 +387,47 @@ const cancelForm = () => {
 
   color: var(--text);
 }
+
+.form-message {
+  margin-bottom: 16px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.form-message.error {
+  border: 1px solid #f4c7c7;
+  background: #fff5f5;
+  color: #b42318;
+}
+
+.form-state {
+  padding: 28px 16px;
+  border: 1px dashed #dce2eb;
+  border-radius: 9px;
+  background: #fafbfc;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.form-state p { margin: 0 0 14px; }
+
+.state-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 6px;
+  background: var(--primary);
+  color: var(--white);
+  font-size: 10px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.state-link:hover { opacity: 0.9; }
 
 /* =========================
    FORM
@@ -580,6 +695,12 @@ form {
 
 .submit-button:hover {
   opacity: 0.9;
+}
+
+.cancel-button:disabled,
+.submit-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* =========================

@@ -21,7 +21,10 @@
           <div><dt>Nama Pegawai</dt><dd>{{ trip.user?.name ?? '—' }}</dd></div><div><dt>Departemen</dt><dd>{{ trip.user?.department ?? '—' }}</dd></div>
           <div><dt>Tujuan</dt><dd>{{ trip.tujuan }}</dd></div><div><dt>Status Pelaksanaan</dt><dd>{{ tripStatusLabel(trip.status) }}</dd></div>
           <div><dt>Tanggal Berangkat</dt><dd>{{ formatDate(trip.tanggal_berangkat) }}</dd></div><div><dt>Tanggal Kembali</dt><dd>{{ formatDate(trip.tanggal_pulang) }}</dd></div>
-          <div><dt>Total Biaya</dt><dd>{{ formatCurrency(trip.total_biaya) }}</dd></div><div><dt>Transportasi / Penginapan</dt><dd>{{ needSummary }}</dd></div>
+          <div><dt>Estimasi Anggaran</dt><dd>{{ formatCurrencyOrDash(trip.estimasi_biaya) }}</dd></div>
+          <div><dt>Realisasi Biaya</dt><dd>{{ formatCurrency(trip.total_biaya) }}</dd></div>
+          <div><dt>Selisih</dt><dd :class="varianceClass">{{ formatCurrencyOrDash(trip.selisih_biaya) }}</dd></div>
+          <div><dt>Transportasi / Penginapan</dt><dd>{{ needSummary }}</dd></div>
           <div class="wide"><dt>Keperluan Perjalanan</dt><dd>{{ trip.keperluan }}</dd></div>
         </dl>
       </section>
@@ -88,6 +91,15 @@ const needLabel = (jenis: string) => {
   return jenis
 }
 
+const formatCurrencyOrDash = (value: number | null | undefined) =>
+  value === null || value === undefined ? '—' : formatCurrency(value)
+
+const varianceClass = computed(() => {
+  const variance = trip.value?.selisih_biaya
+  if (variance === null || variance === undefined || variance === 0) return ''
+  return variance > 0 ? 'over-budget' : 'under-budget'
+})
+
 const needSummary = computed(() => {
   const needs = trip.value?.needs ?? []
   if (needs.length === 0) return '—'
@@ -125,6 +137,8 @@ h1 { margin: 0; color: var(--text); font-size: 24px; }
 .info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 dt { color: var(--text-muted); font-size: 10px; }
 dd { margin: 6px 0 0; color: var(--text); font-size: 12px; overflow-wrap: anywhere; }
+dd.over-budget { color: #b42318; font-weight: 600; }
+dd.under-budget { color: #15803d; font-weight: 600; }
 .wide { grid-column: 1 / -1; }
 .need-list, .document-list, .approval-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .need-list li { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid #edf0f4; font-size: 11px; }

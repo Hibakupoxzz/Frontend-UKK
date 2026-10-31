@@ -36,6 +36,7 @@
             </label>
 
             <input
+              v-model="form.tujuan"
               type="text"
               placeholder="Pilih kota tujuan"
             />
@@ -48,7 +49,9 @@
 
             <div class="input-with-icon">
               <input
+                v-model="form.tanggal_berangkat"
                 type="date"
+                :min="today"
               />
               <span>▣</span>
             </div>
@@ -61,7 +64,9 @@
 
             <div class="input-with-icon">
               <input
+                v-model="form.tanggal_pulang"
                 type="date"
+                :min="form.tanggal_berangkat || today"
               />
               <span>▣</span>
             </div>
@@ -71,67 +76,22 @@
 
         <!-- Row 2 -->
         <div class="form-row">
-
-          <div class="form-group">
-            <label>
-              Jenis Perjalanan <span>*</span>
-            </label>
-
-            <select>
-              <option value="">
-                Pilih jenis perjalanan
-              </option>
-
-              <option value="dinas">
-                Perjalanan Dinas
-              </option>
-
-              <option value="meeting">
-                Meeting
-              </option>
-
-              <option value="training">
-                Training
-              </option>
-
-              <option value="lainnya">
-                Lainnya
-              </option>
-            </select>
-          </div>
-
-          <div class="form-group">
+          <div class="form-group full">
             <label>
               Tujuan/Keperluan <span>*</span>
             </label>
 
             <textarea
+              v-model="form.keperluan"
               rows="4"
               placeholder="Masukkan tujuan atau keperluan perjalanan secara detail..."
             ></textarea>
           </div>
-
         </div>
 
         <!-- Row 3 -->
         <div class="form-row">
-
-          <div class="form-group">
-            <label>
-              Estimasi Anggaran <span>*</span>
-            </label>
-
-            <div class="currency-input">
-              <span>Rp</span>
-
-              <input
-                type="number"
-                placeholder="0"
-              />
-            </div>
-          </div>
-
-          <div class="form-group">
+          <div class="form-group full">
             <label>
               Lampiran <small>(Opsional)</small>
             </label>
@@ -139,18 +99,23 @@
             <div class="file-input">
               <label class="file-button">
                 Pilih File
-                <input type="file" />
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.pdf"
+                  @change="handleFile"
+                />
               </label>
 
               <span class="file-name">
-                Belum ada file dipilih
+                {{ form.file ? form.file.name : 'Belum ada file dipilih' }}
               </span>
             </div>
           </div>
-
         </div>
 
       </div>
+
+      <div v-if="error" class="form-message error" role="alert">{{ error }}</div>
 
       <!-- Footer -->
       <div class="form-footer">
@@ -158,6 +123,8 @@
         <button
           type="button"
           class="cancel-button"
+          :disabled="submitting"
+          @click="cancelForm"
         >
           Batal
         </button>
@@ -165,8 +132,10 @@
         <button
           type="button"
           class="submit-button"
+          :disabled="submitting"
+          @click="submitForm"
         >
-          Ajukan
+          {{ submitting ? 'Mengirim...' : 'Ajukan' }}
         </button>
 
       </div>
@@ -175,6 +144,85 @@
 
   </div>
 </template>
+
+<script setup lang="ts">
+import { reactive, ref } from 'vue'
+import type { CreateTripPayload } from '~/types/api'
+import { useTrips } from '~/composables/useTrips'
+import { apiErrorMessage } from '~/composables/useApi'
+
+const router = useRouter()
+const { createTrip, submitTrip, uploadDocument } = useTrips()
+
+const today = new Date().toISOString().slice(0, 10)
+
+const form = reactive({
+  tujuan: '',
+  tanggal_berangkat: '',
+  tanggal_pulang: '',
+  keperluan: '',
+  file: null as File | null,
+})
+
+const submitting = ref(false)
+const error = ref('')
+
+const handleFile = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  form.file = target.files?.[0] ?? null
+}
+
+const resetForm = () => {
+  form.tujuan = ''
+  form.tanggal_berangkat = ''
+  form.tanggal_pulang = ''
+  form.keperluan = ''
+  form.file = null
+}
+
+const cancelForm = () => {
+  router.push('/admin/perjalanan-dinas')
+}
+
+const submitForm = async () => {
+  error.value = ''
+
+  if (!form.tujuan.trim() || !form.tanggal_berangkat || !form.tanggal_pulang || !form.keperluan.trim()) {
+    error.value = 'Lengkapi tujuan, tanggal, dan keperluan perjalanan.'
+    return
+  }
+
+  const payload: CreateTripPayload = {
+    tujuan: form.tujuan.trim(),
+    tanggal_berangkat: form.tanggal_berangkat,
+    tanggal_pulang: form.tanggal_pulang,
+    keperluan: form.keperluan.trim(),
+  }
+
+  submitting.value = true
+
+  try {
+    const trip = await createTrip(payload)
+
+    if (form.file) {
+      try {
+        await uploadDocument(trip.id, form.file, 'Lampiran pengajuan')
+      } catch {
+        // dokumen opsional; pengajuan tetap dilanjutkan
+      }
+    }
+
+    await submitTrip(trip.id)
+
+    resetForm()
+    await router.push({ path: '/admin/DetailPerjalanan', query: { id: trip.id } })
+  } catch (err) {
+    error.value = apiErrorMessage(err, 'Gagal mengirim pengajuan perjalanan.')
+  } finally {
+    submitting.value = false
+  }
+}
+</script>
 
 <style scoped>
 .pengajuan-page {
@@ -295,6 +343,23 @@
 
 .three-column {
   grid-template-columns: 1fr 1fr 1fr;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.form-message {
+  margin: 0 24px 4px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.form-message.error {
+  border: 1px solid #f4c7c7;
+  background: #fff5f5;
+  color: #b42318;
 }
 
 /* =========================
@@ -504,6 +569,12 @@
 
 .submit-button:hover {
   opacity: 0.9;
+}
+
+.cancel-button:disabled,
+.submit-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* =========================

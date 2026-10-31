@@ -11,28 +11,31 @@
     <div class="summary-grid">
       <DashboardSummaryCard
         title="Total Pegawai"
-        :value="150"
+        :value="employeeTotal"
         icon="👥"
       />
 
       <DashboardSummaryCard
-        title="Pegawai Aktif"
-        :value="120"
+        title="Total Pengguna"
+        :value="userTotal"
         icon="✓"
       />
 
       <DashboardSummaryCard
         title="Dalam Perjalanan"
-        :value="15"
+        :value="berjalanCount"
         icon="▶"
       />
 
       <DashboardSummaryCard
         title="Perjalanan Selesai"
-        :value="85"
+        :value="selesaiCount"
         icon="✓"
       />
     </div>
+
+    <div v-if="error" class="data-error" role="alert">{{ error }}</div>
+    <div v-if="loading" class="data-loading">Memuat data dashboard...</div>
 
     <!-- Charts & Stats -->
     <div class="middle-content">
@@ -41,7 +44,10 @@
         <div class="section-header">
           <h2>Distribusi Pegawai per Departemen</h2>
         </div>
-        <div class="chart">
+        <div v-if="deptData.length === 0" class="chart-empty">
+          Belum ada data departemen.
+        </div>
+        <div v-else class="chart">
           <div v-for="item in deptData" :key="item.dept" class="chart-item">
             <div class="bar-wrapper">
               <div class="bar" :style="{ width: `${item.percentage}%` }"></div>
@@ -70,13 +76,23 @@
               </tr>
             </thead>
             <tbody>
+              <tr v-if="tripsLoading && activeTrips.length === 0">
+                <td colspan="6" class="table-state">Memuat perjalanan...</td>
+              </tr>
+              <tr v-else-if="activeTrips.length === 0">
+                <td colspan="6" class="table-state">Tidak ada perjalanan yang sedang berlangsung.</td>
+              </tr>
               <tr v-for="(trip, index) in activeTrips" :key="trip.id">
                 <td>{{ index + 1 }}</td>
-                <td>{{ trip.employee }}</td>
-                <td>{{ trip.destination }}</td>
-                <td>{{ trip.startDate }}</td>
-                <td>{{ trip.endDate }}</td>
-                <td><span class="status-badge ongoing">Dalam Perjalanan</span></td>
+                <td>{{ trip.user?.name || '—' }}</td>
+                <td>{{ trip.tujuan }}</td>
+                <td>{{ formatDate(trip.tanggal_berangkat) }}</td>
+                <td>{{ formatDate(trip.tanggal_pulang) }}</td>
+                <td>
+                  <span class="status-badge" :class="tripStatusClass(trip.status)">
+                    {{ tripStatusLabel(trip.status) }}
+                  </span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -91,6 +107,7 @@
         <NuxtLink to="/hrd/pelaksanaan" class="view-all">Lihat Semua</NuxtLink>
       </div>
       <div class="activity-list">
+        <p v-if="recentActivities.length === 0" class="table-state">Belum ada aktivitas.</p>
         <article v-for="activity in recentActivities" :key="activity.id" class="activity-item">
           <div class="activity-icon">{{ activity.icon }}</div>
           <div class="activity-info">
@@ -105,29 +122,104 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import DashboardSummaryCard from '~/components/dashboard/SummaryCard.vue'
+import { useDashboard } from '~/composables/useDashboard'
+import { useTrips } from '~/composables/useTrips'
+import { useUsers } from '~/composables/useUsers'
+import { formatDate, tripStatusClass, tripStatusLabel } from '~/utils/format'
 
-const deptData = ref([
-  { dept: 'Marketing', count: 35, percentage: 23.3 },
-  { dept: 'Sales', count: 28, percentage: 18.7 },
-  { dept: 'HRD', count: 22, percentage: 14.7 },
-  { dept: 'Finance', count: 18, percentage: 12.0 },
-  { dept: 'IT', count: 15, percentage: 10.0 },
-  { dept: 'Ops', count: 32, percentage: 21.3 },
-])
+const {
+  summary,
+  loading: dashboardLoading,
+  error: dashboardError,
+  fetchDashboard,
+} = useDashboard()
 
-const activeTrips = ref([
-  { id: 1, employee: 'Andi Saputra', destination: 'Jakarta - Bandung', startDate: '10 Mei 2026', endDate: '12 Mei 2026' },
-  { id: 2, employee: 'Sinta Maharani', destination: 'Jakarta - Surabaya', startDate: '15 Mei 2026', endDate: '18 Mei 2026' },
-  { id: 3, employee: 'Dewi Lestari', destination: 'Jakarta - Yogyakarta', startDate: '20 Mei 2026', endDate: '22 Mei 2026' },
-])
+const {
+  trips: activeTrips,
+  loading: tripsLoading,
+  error: tripsError,
+  fetchTrips,
+} = useTrips()
 
-const recentActivities = ref([
-  { id: 1, icon: '🕐', title: 'Pengajuan perjalanan dinas ke Jakarta - Bandung', status: 'Menunggu Persetujuan', statusClass: 'waiting', time: 'Baru saja' },
-  { id: 2, icon: '✓', title: 'Perjalanan dinas Semarang selesai & laporan diunggah', status: 'Selesai', statusClass: 'completed', time: '1 hari lalu' },
-  { id: 3, icon: '▣', title: 'Reimbursement akomodasi Surabaya disetujui', status: 'Disetujui', statusClass: 'approved', time: '3 hari lalu' },
-])
+const {
+  users,
+  loading: usersLoading,
+  error: usersError,
+  fetchUsers,
+} = useUsers()
+
+const loading = computed(() => dashboardLoading.value || tripsLoading.value || usersLoading.value)
+const error = computed(() => dashboardError.value ?? tripsError.value ?? usersError.value ?? '')
+
+const employeeTotal = computed(() => users.value.filter((user) => user.roles?.includes('pegawai')).length)
+const userTotal = computed(() => users.value.length)
+
+const berjalanCount = computed(() => summary.value?.per_status?.berjalan ?? 0)
+const selesaiCount = computed(
+  () => (summary.value?.per_status?.selesai ?? 0) + (summary.value?.per_status?.lengkap ?? 0),
+)
+
+const deptData = computed(() => {
+  const counts = new Map<string, number>()
+
+  for (const user of users.value) {
+    if (!user.department) continue
+    counts.set(user.department, (counts.get(user.department) ?? 0) + 1)
+  }
+
+  const entries = Array.from(counts.entries()).sort(([, a], [, b]) => b - a)
+  const max = entries.reduce((highest, [, count]) => Math.max(highest, count), 0)
+
+  return entries.map(([dept, count]) => ({
+    dept,
+    count,
+    percentage: max > 0 ? Math.max(10, Math.round((count / max) * 100)) : 0,
+  }))
+})
+
+const relativeTime = (value: string | null | undefined) => {
+  if (!value) return '—'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return formatDate(value)
+
+  const diff = Date.now() - date.getTime()
+  const minutes = Math.floor(diff / 60_000)
+
+  if (minutes < 1) return 'Baru saja'
+  if (minutes < 60) return `${minutes} menit lalu`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} jam lalu`
+
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days} hari lalu`
+
+  return formatDate(value)
+}
+
+const recentActivities = computed(() => (summary.value?.terbaru ?? []).map((trip) => ({
+  id: trip.id,
+  icon: trip.status === 'diajukan' ? '🕐' : trip.status === 'berjalan' ? '▶' : '✓',
+  title: `Perjalanan ke ${trip.tujuan} — ${trip.user?.name ?? 'Pegawai'}`,
+  status: tripStatusLabel(trip.status),
+  statusClass: tripStatusClass(trip.status),
+  time: relativeTime(trip.created_at),
+})))
+
+onMounted(async () => {
+  try {
+    await Promise.all([
+      fetchDashboard(),
+      fetchTrips({ status: 'berjalan', per_page: 100 }),
+      fetchUsers({ per_page: 100 }),
+    ])
+  } catch {
+    // pesan error sudah disimpan oleh composable
+  }
+})
 </script>
 
 <style scoped>
@@ -286,6 +378,19 @@ const recentActivities = ref([
 }
 
 .view-all:hover { text-decoration: underline; }
+
+.data-error { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #f4c7c7; border-radius: 8px; background: #fff5f5; color: #b42318; font-size: 11px; }
+.data-loading { margin-bottom: 16px; font-size: 11px; color: var(--text-muted); }
+.chart-empty { padding: 28px 12px; text-align: center; font-size: 11px; color: #8792a5; }
+.table-state { padding: 22px 12px; text-align: center; font-size: 10px; color: #8792a5; }
+
+.status-badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 4px; font-size: 9px; font-weight: 600; white-space: nowrap; }
+.status-badge.draft { background: #eef1f7; color: #667085; }
+.status-badge.waiting { background: #fff4df; color: #e99a00; }
+.status-badge.approved { background: #e8efff; color: var(--primary); }
+.status-badge.rejected { background: #ffe8e8; color: #ef5350; }
+.status-badge.ongoing { background: #fff4df; color: #e99a00; }
+.status-badge.completed { background: #e5f8f0; color: #20a77a; }
 
 /* RESPONSIVE */
 @media (max-width: 1023px) {

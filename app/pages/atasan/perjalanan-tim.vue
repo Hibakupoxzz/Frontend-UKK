@@ -30,11 +30,11 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ID Perjalanan</th><th>Nama Pegawai</th><th>Tujuan</th><th>Tanggal Berangkat</th><th>Tanggal Kembali</th><th>Estimasi Biaya</th><th>Status Perjalanan</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>ID Perjalanan</th><th>Nama Pegawai</th><th>Tujuan</th><th>Tanggal Berangkat</th><th>Tanggal Kembali</th><th>Estimasi / Realisasi</th><th>Status Perjalanan</th><th>Aksi</th></tr></thead>
           <tbody>
             <tr v-if="loading && trips.length === 0"><td colspan="8" class="empty-cell">Memuat data perjalanan tim...</td></tr>
             <tr v-else-if="filteredTrips.length === 0"><td colspan="8" class="empty-cell">{{ search || status || period || department ? 'Tidak ada perjalanan yang cocok dengan filter.' : 'Belum ada data perjalanan tim untuk ditampilkan.' }}</td></tr>
-            <tr v-for="trip in filteredTrips" :key="trip.id"><td>{{ trip.id }}</td><td>{{ trip.employee }}</td><td>{{ trip.destination }}</td><td>{{ trip.departure }}</td><td>{{ trip.returnDate }}</td><td>{{ trip.estimate }}</td><td><span class="status" :class="trip.statusClass">{{ trip.status }}</span></td><td><NuxtLink :to="`/atasan/perjalanan-tim/${trip.id}`" class="detail-link">Detail</NuxtLink></td></tr>
+            <tr v-for="trip in filteredTrips" :key="trip.id"><td>{{ trip.id }}</td><td>{{ trip.employee }}</td><td>{{ trip.destination }}</td><td>{{ trip.departure }}</td><td>{{ trip.returnDate }}</td><td>{{ trip.estimate }} / {{ trip.realization }}</td><td><span class="status" :class="trip.statusClass">{{ trip.status }}</span></td><td><NuxtLink :to="`/atasan/perjalanan-tim/${trip.id}`" class="detail-link">Detail</NuxtLink></td></tr>
           </tbody>
         </table>
       </div>
@@ -76,6 +76,7 @@ interface TeamTrip {
   departureRaw: string
   returnDate: string
   estimate: string
+  realization: string
   status: string
   statusClass: string
   rawStatus: TripStatus
@@ -96,7 +97,8 @@ const trips = computed<TeamTrip[]>(() => tripData.value.map((trip) => ({
   departure: formatDate(trip.tanggal_berangkat),
   departureRaw: trip.tanggal_berangkat,
   returnDate: formatDate(trip.tanggal_pulang),
-  estimate: formatCurrency(trip.total_biaya),
+  estimate: trip.estimasi_biaya === null ? '—' : formatCurrency(trip.estimasi_biaya),
+  realization: formatCurrency(trip.total_biaya),
   status: tripStatusLabel(trip.status),
   statusClass: tripStatusClass(trip.status),
   rawStatus: trip.status,

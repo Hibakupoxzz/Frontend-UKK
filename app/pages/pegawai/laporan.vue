@@ -12,7 +12,18 @@
     <!-- Header -->
     <div class="page-header">
       <h1>Laporan Saya</h1>
+      <div class="page-actions">
+        <button class="export-button" type="button" :disabled="exporting || loading" @click="handleExport('pdf')">
+          {{ exporting ? 'Menyiapkan...' : 'Ekspor PDF' }}
+        </button>
+        <button class="export-button outline" type="button" :disabled="exporting || loading" @click="handleExport('xlsx')">
+          Ekspor Excel
+        </button>
+      </div>
     </div>
+
+    <div v-if="error" class="data-error" role="alert">{{ error }}</div>
+    <div v-if="exportError" class="data-error" role="alert">{{ exportError }}</div>
 
     <!-- Summary -->
     <div class="summary">
@@ -56,13 +67,19 @@
             </tr>
           </thead>
           <tbody>
+            <tr v-if="loading && personalTrips.length === 0">
+              <td colspan="5" class="table-state">Memuat laporan perjalanan...</td>
+            </tr>
+            <tr v-else-if="personalTrips.length === 0">
+              <td colspan="5" class="table-state">Belum ada riwayat perjalanan.</td>
+            </tr>
             <tr v-for="(trip, index) in personalTrips" :key="trip.id">
               <td>{{ index + 1 }}</td>
               <td>{{ trip.destination }}</td>
               <td>{{ trip.startDate }} - {{ trip.endDate }}</td>
               <td><span class="status-badge" :class="trip.statusClass">{{ trip.status }}</span></td>
               <td>
-                <NuxtLink class="detail-button">Detail</NuxtLink>
+                <NuxtLink to="/pegawai/pengeluaran" class="detail-button">Pengeluaran</NuxtLink>
               </td>
             </tr>
           </tbody>
@@ -88,18 +105,16 @@
             </div>
           </dl>
           <div class="trip-card-actions">
-            <NuxtLink class="detail-button">Detail</NuxtLink>
+            <NuxtLink to="/pegawai/pengeluaran" class="detail-button">Lihat Pengeluaran</NuxtLink>
           </div>
         </article>
-        <p v-if="personalTrips.length === 0" class="empty-state">Belum ada riwayat perjalanan.</p>
+        <p v-if="loading && personalTrips.length === 0" class="empty-state">Memuat laporan perjalanan...</p>
+        <p v-else-if="personalTrips.length === 0" class="empty-state">Belum ada riwayat perjalanan.</p>
       </div>
 
       <!-- Pagination -->
       <div class="table-footer">
-        <span class="showing-text">Menampilkan {{ personalTrips.length }} dari {{ personalTrips.length }} data</span>
-        <div class="pagination">
-          <button class="page-button active">1</button>
-        </div>
+        <span class="showing-text">Menampilkan {{ personalTrips.length }} dari {{ totalTrips }} perjalanan</span>
       </div>
     </section>
 
@@ -112,14 +127,14 @@
         <div class="summary-item">
           <div class="summary-icon orange">⏳</div>
           <div>
-            <p>Belum Diverifikasi</p>
+            <p>Tanpa Bukti</p>
             <h2>{{ formatCurrency(unverifiedExpense) }}</h2>
           </div>
         </div>
         <div class="summary-item">
           <div class="summary-icon green">✅</div>
           <div>
-            <p>Terverifikasi</p>
+            <p>Dengan Bukti</p>
             <h2>{{ formatCurrency(verifiedExpense) }}</h2>
           </div>
         </div>
@@ -129,34 +144,80 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useReports } from '~/composables/useReports'
+import { useDashboard } from '~/composables/useDashboard'
+import { apiErrorMessage } from '~/composables/useApi'
+import { formatCurrency } from '~/utils/format'
 
-const personalTrips = ref([
-  { id: 1, destination: 'Jakarta - Bandung', startDate: '10 Mei 2026', endDate: '12 Mei 2026', status: 'Selesai', statusClass: 'completed' },
-  { id: 2, destination: 'Jakarta - Surabaya', startDate: '15 Mei 2026', endDate: '18 Mei 2026', status: 'Selesai', statusClass: 'completed' },
-  { id: 3, destination: 'Jakarta - Yogyakarta', startDate: '20 Mei 2026', endDate: '22 Mei 2026', status: 'Menunggu', statusClass: 'waiting' },
-])
+const { tripReport, expenseReport, loading: reportsLoading, error: reportsError, fetchTripReport, fetchExpenseReport, downloadReport } = useReports()
+const { summary, loading: dashboardLoading, error: dashboardError, fetchDashboard } = useDashboard()
 
-const expenses = ref([
-  { id: 1, amount: 500000, status: 'verified' },
-  { id: 2, amount: 250000, status: 'menunggu' },
-  { id: 3, amount: 750000, status: 'verified' },
-])
+const exporting = ref(false)
+const exportError = ref('')
 
-const totalExpense = computed(() => expenses.value.reduce((sum, e) => sum + e.amount, 0))
-const unverifiedExpense = computed(() => expenses.value.filter(e => e.status === 'menunggu').reduce((sum, e) => sum + e.amount, 0))
-const verifiedExpense = computed(() => expenses.value.filter(e => e.status === 'verified').reduce((sum, e) => sum + e.amount, 0))
+const loading = computed(() => reportsLoading.value || dashboardLoading.value)
+const error = computed(() => reportsError.value ?? dashboardError.value ?? '')
 
-const totalTrips = computed(() => personalTrips.value.length)
-const statusText = computed(() => personalTrips.value.length > 0 ? 'Ada perjalanan aktif' : 'Belum ada perjalanan')
+const asText = (value: string | number | null | undefined) => (value === null || value === undefined ? '—' : String(value))
+const asNumber = (value: string | number | null | undefined) => Number(value) || 0
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-  }).format(value)
+const STATUS_CLASS: Record<string, string> = {
+  Draft: 'draft',
+  Diajukan: 'waiting',
+  Disetujui: 'approved',
+  Ditolak: 'rejected',
+  Berjalan: 'ongoing',
+  Selesai: 'completed',
+  Lengkap: 'completed',
 }
+
+const personalTrips = computed(() => (tripReport.value?.rows ?? []).map((row, index) => ({
+  id: asNumber(row[0]) || index + 1,
+  destination: asText(row[3]),
+  startDate: asText(row[4]),
+  endDate: asText(row[5]),
+  status: asText(row[6]),
+  statusClass: STATUS_CLASS[asText(row[6])] ?? 'draft',
+  total: asNumber(row[7]),
+})))
+
+const expenseRows = computed(() => (expenseReport.value?.rows ?? []).map((row) => ({
+  amount: asNumber(row[6]),
+  receipts: asNumber(row[7]),
+})))
+
+const totalTrips = computed(() => summary.value?.total_perjalanan ?? personalTrips.value.length)
+const totalExpense = computed(() => expenseRows.value.reduce((sum, row) => sum + row.amount, 0) || summary.value?.total_biaya || 0)
+const unverifiedExpense = computed(() => expenseRows.value.filter((row) => row.receipts === 0).reduce((sum, row) => sum + row.amount, 0))
+const verifiedExpense = computed(() => expenseRows.value.filter((row) => row.receipts > 0).reduce((sum, row) => sum + row.amount, 0))
+
+const statusText = computed(() => {
+  if (totalTrips.value === 0) return 'Belum ada perjalanan'
+  const completed = personalTrips.value.filter((trip) => trip.statusClass === 'completed').length
+  return `${completed} perjalanan selesai`
+})
+
+const handleExport = async (format: 'pdf' | 'xlsx') => {
+  exportError.value = ''
+  exporting.value = true
+
+  try {
+    await downloadReport('trips', format)
+  } catch (err) {
+    exportError.value = apiErrorMessage(err, 'Gagal mengunduh laporan.')
+  } finally {
+    exporting.value = false
+  }
+}
+
+onMounted(() => {
+  Promise.all([
+    fetchTripReport(),
+    fetchExpenseReport(),
+    fetchDashboard(),
+  ]).catch(() => {})
+})
 </script>
 
 <style scoped>
@@ -174,6 +235,11 @@ const formatCurrency = (value: number) => {
 
 .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
 .page-header h1 { margin: 0; font-size: 23px; font-weight: 700; color: var(--text); }
+.page-actions { display: flex; gap: 8px; }
+.export-button { min-height: 33px; padding: 0 13px; border: 1px solid var(--primary); border-radius: 7px; background: var(--primary); color: #fff; font-family: inherit; font-size: 10px; font-weight: 600; cursor: pointer; }
+.export-button.outline { background: var(--white); color: var(--primary); }
+.export-button:disabled { cursor: not-allowed; opacity: 0.55; }
+.data-error { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #f4c7c7; border-radius: 8px; background: #fff5f5; color: #b42318; font-size: 11px; }
 
 /* SUMMARY */
 .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
@@ -200,8 +266,13 @@ const formatCurrency = (value: number) => {
 .trip-history-card .action-column { width: 70px; text-align: center; }
 
 .status-badge { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 5px; font-size: 9px; font-weight: 600; white-space: nowrap; }
-.waiting { background: #fff3df; color: #ef9b16; }
-.completed { background: #dff7ef; color: #18a77c; }
+.status-badge.draft { background: #eef1f7; color: #667085; }
+.status-badge.waiting { background: #fff3df; color: #ef9b16; }
+.status-badge.approved { background: #dff7ef; color: #18a77c; }
+.status-badge.rejected { background: #ffe8e8; color: #ef5350; }
+.status-badge.ongoing { background: #fff3df; color: #ef9b16; }
+.status-badge.completed { background: #dff7ef; color: #18a77c; }
+.table-state { height: 90px; text-align: center; color: #8792a5; font-size: 11px; }
 
 .trip-cards { display: none; }
 .trip-card { padding: 14px; background: var(--white); border: 1px solid var(--border); border-radius: 10px; }
@@ -224,7 +295,7 @@ const formatCurrency = (value: number) => {
 /* RESPONSIVE */
 @media (max-width: 1023px) { .pegawai-laporansaya-page { padding: 20px; } .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .trip-history-card table { min-width: 0; table-layout: fixed; } .trip-history-card th { padding: 9px 6px; } .trip-history-card td { padding: 11px 6px; font-size: 9px; } }
 
-@media (max-width: 767px) { .pegawai-laporansaya-page { padding: 16px; } .page-header h1 { font-size: 20px; } .summary { grid-template-columns: 1fr; gap: 10px; } .summary-item h2 { font-size: 14px; } .trip-history-card { padding: 16px; } .trip-history-card table { display: none; } .trip-cards { display: flex; flex-direction: column; gap: 12px; padding: 14px; } .trip-card { padding: 12px; } .expense-summary-card .summary { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .pegawai-laporansaya-page { padding: 16px; } .page-header h1 { font-size: 20px; } .page-actions { width: 100%; } .export-button { flex: 1; } .summary { grid-template-columns: 1fr; gap: 10px; } .summary-item h2 { font-size: 14px; } .trip-history-card { padding: 16px; } .trip-history-card table { display: none; } .trip-cards { display: flex; flex-direction: column; gap: 12px; padding: 14px; } .trip-card { padding: 12px; } .expense-summary-card .summary { grid-template-columns: 1fr; } }
 
 @media (max-width: 540px) { .summary { grid-template-columns: 1fr; } }
 

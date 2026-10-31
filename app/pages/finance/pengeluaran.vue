@@ -24,32 +24,34 @@
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon orange">⏳</div>
+        <div class="stat-icon orange">▤</div>
         <div>
-          <p>Menunggu Verifikasi</p>
-          <h2>{{ formatCurrency(stats.pending) }}</h2>
+          <p>Jumlah Pengeluaran</p>
+          <h2>{{ stats.count }}</h2>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon cyan">✓</div>
+        <div class="stat-icon cyan">⏳</div>
         <div>
-          <p>Terverifikasi</p>
-          <h2>{{ formatCurrency(stats.verified) }}</h2>
+          <p>Tanpa Bukti</p>
+          <h2>{{ formatCurrency(stats.withoutReceipt) }}</h2>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon green">✅</div>
+        <div class="stat-icon green">✓</div>
         <div>
-          <p>Sudah Dibayar</p>
-          <h2>{{ formatCurrency(stats.paid) }}</h2>
+          <p>Dengan Bukti</p>
+          <h2>{{ formatCurrency(stats.withReceipt) }}</h2>
         </div>
       </div>
     </div>
 
+    <div v-if="error" class="data-error" role="alert">{{ error }}</div>
+
     <!-- Filter Card -->
     <div class="filter-card">
       <div class="filter-group search-group">
-        <label>Cari Pegawai / No. Pengajuan</label>
+        <label>Cari Pegawai / Tujuan</label>
         <div class="search-input">
           <svg viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 0 4.08 11.56l4.43 4.43 1.41-1.41-4.43-4.43A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
           <input v-model="search" type="text" placeholder="Cari..." />
@@ -60,29 +62,18 @@
         <label>Periode</label>
         <select v-model="selectedPeriod">
           <option value="">Semua Periode</option>
-          <option value="2026-05">Mei 2026</option>
-          <option value="2026-04">April 2026</option>
-          <option value="2026-03">Maret 2026</option>
+          <option v-for="option in periodOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
         </select>
       </div>
 
       <div class="filter-group">
-        <label>Status Verifikasi</label>
-        <select v-model="selectedVerification">
+        <label>Bukti</label>
+        <select v-model="selectedReceipt">
           <option value="">Semua</option>
-          <option value="pending">Menunggu</option>
-          <option value="verified">Terverifikasi</option>
-          <option value="rejected">Ditolak</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label>Status Pembayaran</label>
-        <select v-model="selectedPayment">
-          <option value="">Semua</option>
-          <option value="unpaid">Belum Dibayar</option>
-          <option value="processing">Diproses</option>
-          <option value="paid">Selesai</option>
+          <option value="with">Dengan Bukti</option>
+          <option value="without">Tanpa Bukti</option>
         </select>
       </div>
     </div>
@@ -95,27 +86,33 @@
             <tr>
               <th class="no-column">No</th>
               <th>Pegawai</th>
-              <th>No. Perjalanan</th>
               <th>Tujuan</th>
-              <th>Estimasi</th>
-              <th>Aktual</th>
-              <th>Status Verifikasi</th>
-              <th>Status Bayar</th>
-              <th class="action-column">Aksi</th>
+              <th>Tanggal</th>
+              <th>Jenis</th>
+              <th>Keterangan</th>
+              <th>Jumlah</th>
+              <th>Bukti</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(item, index) in filteredExpenses" :key="item.id">
+            <tr v-if="loading && rows.length === 0">
+              <td colspan="8" class="table-state">Memuat data pengeluaran...</td>
+            </tr>
+            <tr v-else-if="filteredRows.length === 0">
+              <td colspan="8" class="table-state">Tidak ada data pengeluaran.</td>
+            </tr>
+            <tr v-for="(item, index) in filteredRows" :key="item.key">
               <td>{{ index + 1 }}</td>
               <td>{{ item.employee }}</td>
-              <td>{{ item.tripNumber }}</td>
               <td>{{ item.destination }}</td>
-              <td>{{ formatCurrency(item.estimated) }}</td>
-              <td>{{ formatCurrency(item.actual) }}</td>
-              <td><span class="status-badge" :class="item.verificationClass">{{ item.verification }}</span></td>
-              <td><span class="status-badge" :class="item.paymentClass">{{ item.payment }}</span></td>
+              <td>{{ item.date }}</td>
+              <td>{{ item.jenis }}</td>
+              <td>{{ item.keterangan }}</td>
+              <td>{{ formatCurrency(item.amount) }}</td>
               <td>
-                <NuxtLink :to="`/finance/verifikasi/${item.id}`" class="detail-button">Detail</NuxtLink>
+                <span class="status-badge" :class="item.receipts > 0 ? 'completed' : 'waiting'">
+                  {{ item.receipts > 0 ? `${item.receipts} file` : 'Belum ada' }}
+                </span>
               </td>
             </tr>
           </tbody>
@@ -124,92 +121,134 @@
 
       <!-- Mobile Cards -->
       <div class="expense-cards">
-        <article v-for="(item, index) in filteredExpenses" :key="`card-${item.id}`" class="expense-card">
+        <article v-for="(item, index) in filteredRows" :key="`card-${item.key}`" class="expense-card">
           <div class="expense-card-header">
             <span class="expense-card-number">#{{ index + 1 }}</span>
-            <span class="status-badge" :class="item.verificationClass">{{ item.verification }}</span>
+            <span class="status-badge" :class="item.receipts > 0 ? 'completed' : 'waiting'">
+              {{ item.receipts > 0 ? 'Dengan Bukti' : 'Tanpa Bukti' }}
+            </span>
           </div>
           <div class="expense-card-title">{{ item.employee }}</div>
-          <div class="expense-card-subtitle">{{ item.tripNumber }} - {{ item.destination }}</div>
+          <div class="expense-card-subtitle">{{ item.destination }} - {{ item.date }}</div>
           <dl class="expense-card-details">
             <div>
-              <dt>Estimasi</dt>
-              <dd>{{ formatCurrency(item.estimated) }}</dd>
+              <dt>Jenis</dt>
+              <dd>{{ item.jenis }}</dd>
             </div>
             <div>
-              <dt>Aktual</dt>
-              <dd>{{ formatCurrency(item.actual) }}</dd>
+              <dt>Keterangan</dt>
+              <dd>{{ item.keterangan }}</dd>
             </div>
             <div>
-              <dt>Status Bayar</dt>
-              <dd><span class="status-badge" :class="item.paymentClass">{{ item.payment }}</span></dd>
+              <dt>Jumlah</dt>
+              <dd>{{ formatCurrency(item.amount) }}</dd>
+            </div>
+            <div>
+              <dt>Bukti</dt>
+              <dd>{{ item.receipts > 0 ? `${item.receipts} file` : 'Belum ada' }}</dd>
             </div>
           </dl>
-          <div class="expense-card-actions">
-            <NuxtLink :to="`/finance/verifikasi/${item.id}`" class="detail-button">Detail Verifikasi</NuxtLink>
-          </div>
         </article>
-        <p v-if="filteredExpenses.length === 0" class="empty-state">Tidak ada data pengeluaran.</p>
+        <p v-if="!loading && filteredRows.length === 0" class="empty-state">Tidak ada data pengeluaran.</p>
       </div>
 
-      <!-- Pagination -->
+      <!-- Footer -->
       <div class="table-footer">
-        <span class="showing-text">Menampilkan {{ filteredExpenses.length }} dari {{ expenses.length }} data</span>
-        <div class="pagination">
-          <button class="page-button active">1</button>
-          <button class="page-button">2</button>
-          <button class="page-button">3</button>
-        </div>
+        <span class="showing-text">Menampilkan {{ filteredRows.length }} dari {{ rows.length }} data</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useReports } from '~/composables/useReports'
+import { formatCurrency } from '~/utils/format'
 
 const search = ref('')
 const selectedPeriod = ref('')
-const selectedVerification = ref('')
-const selectedPayment = ref('')
+const selectedReceipt = ref('')
 
-const stats = ref({
-  total: 125000000,
-  pending: 25000000,
-  verified: 45000000,
-  paid: 55000000,
+const { expenseReport, loading, error, fetchExpenseReport } = useReports()
+
+const asText = (value: string | number | null | undefined) =>
+  (value === null || value === undefined ? '—' : String(value))
+const asNumber = (value: string | number | null | undefined) => Number(value) || 0
+
+const rows = computed(() => (expenseReport.value?.rows ?? []).map((row, index) => {
+  const date = asText(row[3])
+  const [day, month, year] = date.split('-')
+
+  return {
+    key: `${date}-${index}`,
+    employee: asText(row[1]),
+    destination: asText(row[2]),
+    date,
+    dateKey: `${year}-${month}-${day}`,
+    periodKey: `${year}-${month}`,
+    jenis: asText(row[4]),
+    keterangan: asText(row[5]),
+    amount: asNumber(row[6]),
+    receipts: asNumber(row[7]),
+  }
+}))
+
+const periodOptions = computed(() => {
+  const months = new Map<string, string>()
+
+  for (const row of rows.value) {
+    if (!row.periodKey || row.periodKey.includes('undefined')) continue
+    if (months.has(row.periodKey)) continue
+
+    const label = new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' })
+      .format(new Date(`${row.periodKey}-01`))
+
+    months.set(row.periodKey, label)
+  }
+
+  return Array.from(months.entries())
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([value, label]) => ({ value, label }))
 })
 
-const expenses = ref([
-  { id: 1, employee: 'Andi Saputra', tripNumber: 'TRV-2026-001', destination: 'Jakarta - Bandung', estimated: 5000000, actual: 5500000, verification: 'Menunggu', verificationClass: 'waiting', payment: 'Belum Dibayar', paymentClass: 'pending' },
-  { id: 2, employee: 'Sinta Maharani', tripNumber: 'TRV-2026-002', destination: 'Jakarta - Surabaya', estimated: 8000000, actual: 8200000, verification: 'Terverifikasi', verificationClass: 'verified', payment: 'Diproses', paymentClass: 'processing' },
-  { id: 3, employee: 'Budi Santoso', tripNumber: 'TRV-2026-003', destination: 'Jakarta - Semarang', estimated: 4500000, actual: 4800000, verification: 'Terverifikasi', verificationClass: 'verified', payment: 'Selesai', paymentClass: 'paid' },
-  { id: 4, employee: 'Dewi Lestari', tripNumber: 'TRV-2026-004', destination: 'Jakarta - Yogyakarta', estimated: 6000000, actual: 6500000, verification: 'Ditolak', verificationClass: 'rejected', payment: '-', paymentClass: 'pending' },
-  { id: 5, employee: 'Rudi Hartono', tripNumber: 'TRV-2026-005', destination: 'Jakarta - Medan', estimated: 12000000, actual: 11800000, verification: 'Terverifikasi', verificationClass: 'verified', payment: 'Selesai', paymentClass: 'paid' },
-  { id: 6, employee: 'Maya Putri', tripNumber: 'TRV-2026-006', destination: 'Jakarta - Bali', estimated: 15000000, actual: 16200000, verification: 'Menunggu', verificationClass: 'waiting', payment: 'Belum Dibayar', paymentClass: 'pending' },
-])
+const filteredRows = computed(() => {
+  const query = search.value.trim().toLowerCase()
 
-const filteredExpenses = computed(() => {
-  return expenses.value.filter(expense => {
-    const searchMatch = !search.value ||
-      expense.employee.toLowerCase().includes(search.value.toLowerCase()) ||
-      expense.tripNumber.toLowerCase().includes(search.value.toLowerCase())
+  return rows.value.filter((item) => {
+    const searchMatch = !query
+      || item.employee.toLowerCase().includes(query)
+      || item.destination.toLowerCase().includes(query)
 
-    const periodMatch = !selectedPeriod.value
-    const verificationMatch = !selectedVerification.value || expense.verificationClass === selectedVerification.value
-    const paymentMatch = !selectedPayment.value || expense.paymentClass === selectedPayment.value
+    const periodMatch = !selectedPeriod.value || item.periodKey === selectedPeriod.value
+    const receiptMatch = !selectedReceipt.value
+      || (selectedReceipt.value === 'with' && item.receipts > 0)
+      || (selectedReceipt.value === 'without' && item.receipts === 0)
 
-    return searchMatch && periodMatch && verificationMatch && paymentMatch
+    return searchMatch && periodMatch && receiptMatch
   })
 })
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-  }).format(value)
-}
+const stats = computed(() => {
+  const total = rows.value.reduce((sum, row) => sum + row.amount, 0)
+  const withReceipt = rows.value
+    .filter((row) => row.receipts > 0)
+    .reduce((sum, row) => sum + row.amount, 0)
+
+  return {
+    total,
+    count: rows.value.length,
+    withReceipt,
+    withoutReceipt: total - withReceipt,
+  }
+})
+
+onMounted(async () => {
+  try {
+    await fetchExpenseReport()
+  } catch {
+    // pesan error sudah disimpan oleh composable
+  }
+})
 </script>
 
 <style scoped>
@@ -280,10 +319,12 @@ const formatCurrency = (value: number) => {
 .stat-card p { margin: 0 0 3px; font-size: 9px; color: #7b8799; }
 .stat-card h2 { margin: 0; font-size: 15px; line-height: 1.1; color: var(--text); font-weight: 700; }
 
+.data-error { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #f4c7c7; border-radius: 8px; background: #fff5f5; color: #b42318; font-size: 11px; }
+
 /* FILTER CARD */
 .filter-card {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) 195px 195px 195px;
+  grid-template-columns: minmax(280px, 1fr) 195px 195px;
   gap: 14px;
   padding: 16px;
   margin-bottom: 24px;
@@ -327,7 +368,7 @@ th { padding: 10px 12px; text-align: left; font-size: 9px; font-weight: 600; col
 td { padding: 14px 12px; border-bottom: 1px solid #e5e8ee; font-size: 10px; color: #344054; vertical-align: middle; }
 tbody tr:last-child td { border-bottom: none; }
 .no-column { width: 30px; }
-.action-column { width: 70px; text-align: center; }
+.table-state { padding: 22px 12px; text-align: center; font-size: 10px; color: #8792a5; }
 
 .status-badge {
   display: inline-flex; align-items: center;
@@ -335,17 +376,7 @@ tbody tr:last-child td { border-bottom: none; }
   font-size: 9px; font-weight: 600; white-space: nowrap;
 }
 .waiting, .pending { background: #fff3df; color: #ef9b16; }
-.verified, .approved { background: #dff7ef; color: #18a77c; }
-.rejected { background: #ffe8e8; color: #ef5350; }
-.processing { background: #e8efff; color: var(--primary); }
-.paid, .completed { background: #dff7ef; color: #18a77c; }
-
-.detail-button, .detail-link {
-  display: inline-block; margin: auto;
-  border: none; background: transparent;
-  color: #1769ff; font-family: inherit; font-size: 10px; font-weight: 600; cursor: pointer; text-decoration: none;
-}
-.detail-button:hover, .detail-link:hover { text-decoration: underline; }
+.completed { background: #dff7ef; color: #18a77c; }
 
 /* MOBILE CARDS */
 .expense-cards { display: none; }
@@ -360,17 +391,12 @@ tbody tr:last-child td { border-bottom: none; }
 .expense-card-details > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .expense-card-details dt { font-size: 10px; color: #8792a5; }
 .expense-card-details dd { margin: 0; font-size: 11px; font-weight: 500; color: var(--text); text-align: right; }
-.expense-card-actions { display: flex; justify-content: flex-end; padding-top: 10px; border-top: 1px solid #eef1f5; }
-.expense-card-actions .detail-button { width: 100%; min-height: 40px; border: 1px solid var(--primary); border-radius: 7px; background: #f5f8ff; }
 
 .empty-state { padding: 28px 16px; text-align: center; font-size: 12px; color: #8792a5; }
 
 /* FOOTER */
 .table-footer { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px 18px; }
 .showing-text { font-size: 9px; color: #718096; }
-.pagination { display: flex; gap: 6px; }
-.page-button { width: 25px; height: 25px; border: 1px solid #dce2eb; border-radius: 5px; background: var(--white); color: var(--text); font-family: inherit; font-size: 9px; cursor: pointer; }
-.page-button.active { border-color: var(--primary); background: var(--primary); color: var(--white); }
 
 /* RESPONSIVE */
 @media (max-width: 1023px) {
@@ -381,7 +407,6 @@ tbody tr:last-child td { border-bottom: none; }
   table { min-width: 0; table-layout: fixed; }
   th { padding: 9px 6px; } td { padding: 11px 6px; font-size: 9px; }
   .status-badge { padding: 3px 7px; font-size: 8.5px; }
-  .detail-button { font-size: 9px; }
 }
 
 @media (max-width: 767px) {
@@ -392,8 +417,6 @@ tbody tr:last-child td { border-bottom: none; }
   .date-input svg { display: none; }
   .table-wrapper { display: none; }
   .table-footer { flex-direction: column; align-items: flex-start; gap: 10px; padding: 0 14px 14px; }
-  .pagination { flex-wrap: wrap; }
-  .page-button { width: 36px; height: 36px; }
   .expense-cards { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
   .table-card { border: none; background: transparent; overflow: visible; }
   .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

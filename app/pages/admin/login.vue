@@ -82,12 +82,9 @@
               <span>Ingat saya</span>
             </label>
 
-            <NuxtLink
-              to="/forgot-password"
-              class="forgot-password"
-            >
+            <span class="forgot-password" title="Hubungi administrator untuk mengatur ulang password">
               Lupa password?
-            </NuxtLink>
+            </span>
           </div>
 
           <!-- ERROR MESSAGE -->

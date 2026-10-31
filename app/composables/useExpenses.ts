@@ -1,5 +1,5 @@
 import type { CreateExpensePayload, Expense, ExpenseListResponse } from '~/types/api'
-import { apiErrorMessage } from '~/composables/useApi'
+import { apiErrorMessage, unwrapData } from '~/composables/useApi'
 
 export const useExpenses = () => {
   const { get, post, put, remove, request } = useApi()
@@ -27,11 +27,11 @@ export const useExpenses = () => {
     }
   }
 
-  const createExpense = (tripId: number | string, payload: CreateExpensePayload) =>
-    post<Expense>(`/trips/${tripId}/expenses`, payload)
+  const createExpense = async (tripId: number | string, payload: CreateExpensePayload) =>
+    unwrapData(await post<Expense | { data: Expense }>(`/trips/${tripId}/expenses`, payload))
 
-  const updateExpense = (id: number | string, payload: CreateExpensePayload) =>
-    put<Expense>(`/expenses/${id}`, payload)
+  const updateExpense = async (id: number | string, payload: CreateExpensePayload) =>
+    unwrapData(await put<Expense | { data: Expense }>(`/expenses/${id}`, payload))
 
   const deleteExpense = (id: number | string) =>
     remove<{ message: string }>(`/expenses/${id}`)

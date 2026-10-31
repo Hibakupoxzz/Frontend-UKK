@@ -110,11 +110,11 @@
               </td>
             </tr>
 
-            <tr
-              v-for="(trip, index) in filteredTrips"
-              v-else-if="filteredTrips.length > 0"
-              :key="trip.id"
-            >
+            <template v-else>
+              <tr
+                v-for="(trip, index) in filteredTrips"
+                :key="trip.id"
+              >
               <td>{{ index + 1 }}</td>
 
               <td>
@@ -151,7 +151,8 @@
                   Detail
                 </NuxtLink>
               </td>
-            </tr>
+              </tr>
+            </template>
           </tbody>
         </table>
 
@@ -171,13 +172,16 @@
               class="status-badge"
               :class="trip.statusClass"
             >
-              {{ trip.status }}
+              {{ trip.statusLabel }}
             </span>
           </div>
 
-          <a href="#" class="trip-card-title">
+          <NuxtLink
+            :to="{ path: '/admin/DetailPerjalanan', query: { id: trip.id } }"
+            class="trip-card-title"
+          >
             {{ trip.destination }}
-          </a>
+          </NuxtLink>
 
           <dl class="trip-card-details">
             <div>
@@ -197,12 +201,12 @@
           </dl>
 
           <div class="trip-card-actions">
-            <button
+            <NuxtLink
+              :to="{ path: '/admin/DetailPerjalanan', query: { id: trip.id } }"
               class="detail-button"
-              type="button"
             >
               Detail
-            </button>
+            </NuxtLink>
           </div>
         </article>
 
@@ -218,23 +222,20 @@
       <div class="table-footer">
 
         <span class="showing-text">
-          Menampilkan {{ filteredTrips.length }} dari 24 perjalanan
+          Menampilkan {{ filteredTrips.length }} dari {{ totalTrips }} perjalanan
         </span>
 
-        <div class="pagination">
-
-          <button class="page-button active">
-            1
+        <div v-if="lastPage > 1" class="pagination">
+          <button
+            v-for="pageNumber in lastPage"
+            :key="pageNumber"
+            class="page-button"
+            :class="{ active: pageNumber === page }"
+            type="button"
+            @click="changePage(pageNumber)"
+          >
+            {{ pageNumber }}
           </button>
-
-          <button class="page-button">
-            2
-          </button>
-
-          <button class="page-button">
-            3
-          </button>
-
         </div>
 
       </div>
@@ -244,78 +245,61 @@
   </div>
 </template>
 
-<script setup>
-import { computed, ref } from 'vue'
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { useTrips } from '~/composables/useTrips'
+import { formatDate, tripStatusClass, tripStatusLabel } from '~/utils/format'
+
+const { trips, meta, loading, error, fetchTrips } = useTrips()
 
 const search = ref('')
 const selectedStatus = ref('')
 const selectedDate = ref('')
+const page = ref(1)
 
-const trips = [
-  {
-    id: 1,
-    destination: 'Jakarta - Bandung',
-    startDate: '12 Mei 2026',
-    endDate: '15 Mei 2026',
-    type: 'Kereta Api',
-    status: 'Disetujui',
-    statusClass: 'approved'
-  },
-  {
-    id: 2,
-    destination: 'Jakarta - Surabaya',
-    startDate: '20 Mei 2026',
-    endDate: '24 Mei 2026',
-    type: 'Pesawat Terbang',
-    status: 'Menunggu',
-    statusClass: 'waiting'
-  },
-  {
-    id: 3,
-    destination: 'Jakarta - Semarang',
-    startDate: '28 Mei 2026',
-    endDate: '31 Mei 2026',
-    type: 'Mobil Dinas',
-    status: 'Ditolak',
-    statusClass: 'rejected'
-  },
-  {
-    id: 4,
-    destination: 'Jakarta - Yogyakarta',
-    startDate: '02 Juni 2026',
-    endDate: '06 Juni 2026',
-    type: 'Kereta Api',
-    status: 'Selesai',
-    statusClass: 'completed'
-  },
-  {
-    id: 5,
-    destination: 'Jakarta - Medan',
-    startDate: '10 Juni 2026',
-    endDate: '15 Juni 2026',
-    type: 'Pesawat Terbang',
-    status: 'Dalam Perjalanan',
-    statusClass: 'ongoing'
-  }
-]
+const needLabel = (jenis: string) => (jenis === 'transportasi' ? 'Transportasi' : 'Penginapan')
 
 const filteredTrips = computed(() => {
-  return trips.filter((trip) => {
+  return trips.value
+    .map((trip) => ({
+      id: trip.id,
+      destination: trip.tujuan,
+      startDate: formatDate(trip.tanggal_berangkat),
+      endDate: formatDate(trip.tanggal_pulang),
+      startRaw: trip.tanggal_berangkat,
+      endRaw: trip.tanggal_pulang,
+      keperluan: trip.keperluan,
+      type: trip.needs?.length ? trip.needs.map((need) => needLabel(need.jenis)).join(', ') : '—',
+      status: trip.status,
+      statusLabel: trip.statusLabel ?? tripStatusLabel(trip.status),
+      statusClass: tripStatusClass(trip.status),
+    }))
+    .filter((trip) => {
+      const query = search.value.toLowerCase()
+      const searchMatch = !query
+        || trip.destination.toLowerCase().includes(query)
+        || trip.keperluan.toLowerCase().includes(query)
+        || trip.type.toLowerCase().includes(query)
 
-    const searchMatch =
-      trip.destination
-        .toLowerCase()
-        .includes(search.value.toLowerCase()) ||
-      trip.type
-        .toLowerCase()
-        .includes(search.value.toLowerCase())
+      const statusMatch = !selectedStatus.value || trip.status === selectedStatus.value
+      const dateMatch = !selectedDate.value
+        || (trip.startRaw <= selectedDate.value && trip.endRaw >= selectedDate.value)
 
-    const statusMatch =
-      !selectedStatus.value ||
-      trip.status === selectedStatus.value
+      return searchMatch && statusMatch && dateMatch
+    })
+})
 
-    return searchMatch && statusMatch
-  })
+const totalTrips = computed(() => meta.value?.total ?? trips.value.length)
+const lastPage = computed(() => Math.max(meta.value?.last_page ?? 1, 1))
+
+const changePage = async (value: number) => {
+  if (value < 1 || value > lastPage.value || value === page.value) return
+  page.value = value
+  await fetchTrips({ page: value })
+}
+
+onMounted(() => {
+  fetchTrips({ page: 1 }).catch(() => {})
 })
 </script>
 

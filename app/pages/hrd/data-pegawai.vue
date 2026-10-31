@@ -28,23 +28,20 @@
         <label>Departemen</label>
         <select v-model="selectedDepartment">
           <option value="">Semua Departemen</option>
-          <option value="Marketing">Marketing</option>
-          <option value="Sales">Sales</option>
-          <option value="HRD">HRD</option>
-          <option value="Finance">Finance</option>
-          <option value="IT">IT</option>
+          <option v-for="department in departments" :key="department" :value="department">{{ department }}</option>
         </select>
       </div>
 
       <div class="filter-group">
-        <label>Status</label>
-        <select v-model="selectedStatus">
-          <option value="">Semua</option>
-          <option value="active">Aktif</option>
-          <option value="nonaktif">Nonaktif</option>
+        <label>Role</label>
+        <select v-model="selectedRole">
+          <option value="">Semua Role</option>
+          <option v-for="role in roleOptions" :key="role.value" :value="role.value">{{ role.label }}</option>
         </select>
       </div>
     </div>
+
+    <div v-if="error" class="data-error" role="alert">{{ error }}</div>
 
     <!-- Table Card -->
     <div class="table-card">
@@ -56,25 +53,26 @@
               <th>ID Pegawai</th>
               <th>Nama</th>
               <th>Departemen</th>
-              <th>Jabatan</th>
+              <th>Role</th>
               <th>Email</th>
-              <th>Status</th>
-              <th class="action-column">Aksi</th>
+              <th>Atasan</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(pegawai, index) in filteredPegawai" :key="pegawai.id">
+            <tr v-if="loading && pegawai.length === 0">
+              <td colspan="7" class="table-state">Memuat data pegawai...</td>
+            </tr>
+            <tr v-else-if="filteredPegawai.length === 0">
+              <td colspan="7" class="table-state">{{ search || selectedDepartment || selectedRole ? 'Tidak ada pegawai yang cocok dengan filter.' : 'Belum ada data pegawai.' }}</td>
+            </tr>
+            <tr v-for="(pegawaiItem, index) in filteredPegawai" :key="pegawaiItem.id">
               <td>{{ index + 1 }}</td>
-              <td>PG-{{ pegawai.id }}</td>
-              <td>{{ pegawai.name }}</td>
-              <td>{{ pegawai.department }}</td>
-              <td>{{ pegawai.position }}</td>
-              <td>{{ pegawai.email }}</td>
-              <td><span class="status-badge" :class="pegawai.statusClass">{{ pegawai.statusLabel }}</span></td>
-              <td>
-                <NuxtLink :to="`/hrd/pegawai-detail/${pegawai.id}`" class="detail-button">Detail</NuxtLink>
-                <button class="edit-button">Edit</button>
-              </td>
+              <td>PG-{{ pegawaiItem.id }}</td>
+              <td>{{ pegawaiItem.name }}</td>
+              <td>{{ pegawaiItem.department }}</td>
+              <td><span class="role-badge">{{ pegawaiItem.position }}</span></td>
+              <td>{{ pegawaiItem.email }}</td>
+              <td>{{ pegawaiItem.atasan }}</td>
             </tr>
           </tbody>
         </table>
@@ -82,41 +80,46 @@
 
       <!-- Mobile Cards -->
       <div class="pegawai-cards">
-        <article v-for="(pegawai, index) in filteredPegawai" :key="`card-${pegawai.id}`" class="pegawai-card">
+        <article v-for="(pegawaiItem, index) in filteredPegawai" :key="`card-${pegawaiItem.id}`" class="pegawai-card">
           <div class="pegawai-card-header">
             <span class="pegawai-card-number">#{{ index + 1 }}</span>
-            <span class="status-badge" :class="pegawai.statusClass">{{ pegawai.statusLabel }}</span>
+            <span class="role-badge">{{ pegawaiItem.position }}</span>
           </div>
-          <div class="pegawai-card-title">{{ pegawai.name }}</div>
-          <div class="pegawai-card-subtitle">{{ pegawai.position }} - {{ pegawai.department }}</div>
+          <div class="pegawai-card-title">{{ pegawaiItem.name }}</div>
+          <div class="pegawai-card-subtitle">{{ pegawaiItem.department }}</div>
           <dl class="pegawai-card-details">
             <div>
               <dt>ID Pegawai</dt>
-              <dd>PG-{{ pegawai.id }}</dd>
+              <dd>PG-{{ pegawaiItem.id }}</dd>
             </div>
             <div>
               <dt>Email</dt>
-              <dd>{{ pegawai.email }}</dd>
+              <dd>{{ pegawaiItem.email }}</dd>
             </div>
             <div>
-              <dt>Departemen</dt>
-              <dd>{{ pegawai.department }}</dd>
+              <dt>Atasan</dt>
+              <dd>{{ pegawaiItem.atasan }}</dd>
             </div>
           </dl>
-          <div class="pegawai-card-actions">
-            <NuxtLink :to="`/hrd/pegawai-detail/${pegawai.id}`" class="detail-button">Detail</NuxtLink>
-          </div>
         </article>
-        <p v-if="filteredPegawai.length === 0" class="empty-state">Tidak ada data pegawai.</p>
+        <p v-if="loading && pegawai.length === 0" class="empty-state">Memuat data pegawai...</p>
+        <p v-else-if="filteredPegawai.length === 0" class="empty-state">Belum ada data pegawai.</p>
       </div>
 
       <!-- Pagination -->
       <div class="table-footer">
-        <span class="showing-text">Menampilkan {{ filteredPegawai.length }} dari {{ pegawai.length }} data</span>
-        <div class="pagination">
-          <button class="page-button active">1</button>
-          <button class="page-button">2</button>
-          <button class="page-button">3</button>
+        <span class="showing-text">Menampilkan {{ filteredPegawai.length }} dari {{ totalPegawai }} data</span>
+        <div v-if="lastPage > 1" class="pagination">
+          <button
+            v-for="pageNumber in lastPage"
+            :key="pageNumber"
+            class="page-button"
+            :class="{ active: pageNumber === page }"
+            type="button"
+            @click="changePage(pageNumber)"
+          >
+            {{ pageNumber }}
+          </button>
         </div>
       </div>
     </div>
@@ -124,35 +127,78 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import type { UserRole } from '~/types/api'
+import { useUsers } from '~/composables/useUsers'
+
+const { users, meta, loading, error, fetchUsers } = useUsers()
 
 const search = ref('')
 const selectedDepartment = ref('')
-const selectedStatus = ref('')
+const selectedRole = ref('')
+const page = ref(1)
 
-const pegawai = ref([
-  { id: 1, name: 'Andi Saputra', department: 'Marketing', position: 'Staff Marketing', email: 'andi@company.com', status: 'active', statusClass: 'active', statusLabel: 'Aktif' },
-  { id: 2, name: 'Sinta Maharani', department: 'Sales', position: 'Staff Sales', email: 'sinta@company.com', status: 'active', statusClass: 'active', statusLabel: 'Aktif' },
-  { id: 3, name: 'Dewi Lestari', department: 'HRD', position: 'Staff HRD', email: 'dewi@company.com', status: 'active', statusClass: 'active', statusLabel: 'Aktif' },
-  { id: 4, name: 'Budi Santoso', department: 'Finance', position: 'Staff Keuangan', email: 'budi@company.com', status: 'active', statusClass: 'active', statusLabel: 'Aktif' },
-  { id: 5, name: 'Rudi Hartono', department: 'IT', position: 'Staff IT', email: 'rudi@company.com', status: 'active', statusClass: 'active', statusLabel: 'Aktif' },
-  { id: 6, name: 'Maya Putri', department: 'Marketing', position: 'Staff Marketing', email: 'maya@company.com', status: 'nonaktif', statusClass: 'nonactive', statusLabel: 'Nonaktif' },
-  { id: 7, name: 'Joko Widodo', department: 'Sales', position: 'Sales Manager', email: 'joko@company.com', status: 'active', statusClass: 'active', statusLabel: 'Aktif' },
-  { id: 8, name: 'Fitriani', department: 'HRD', position: 'HR Officer', email: 'fitri@company.com', status: 'active', statusClass: 'active', statusLabel: 'Aktif' },
-])
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Administrator',
+  atasan: 'Atasan',
+  pegawai: 'Pegawai',
+  finance: 'Finance',
+  hrd: 'HRD',
+}
+
+const roleOptions = (Object.keys(ROLE_LABELS) as UserRole[]).map((value) => ({
+  value,
+  label: ROLE_LABELS[value],
+}))
+
+const pegawai = computed(() => users.value.map((user) => {
+  const role = (user.role ?? user.roles?.[0] ?? 'pegawai') as UserRole
+
+  return {
+    id: user.id,
+    name: user.name,
+    department: user.department ?? '—',
+    position: ROLE_LABELS[role] ?? role,
+    role,
+    email: user.email,
+    atasan: user.atasan?.name ?? '—',
+  }
+}))
+
+const departments = computed(() => {
+  const values = new Set<string>()
+  for (const item of pegawai.value) {
+    if (item.department && item.department !== '—') values.add(item.department)
+  }
+  return Array.from(values).sort((a, b) => a.localeCompare(b))
+})
 
 const filteredPegawai = computed(() => {
-  return pegawai.value.filter(p => {
-    const searchMatch = !search.value ||
-      p.name.toLowerCase().includes(search.value.toLowerCase()) ||
-      p.id.toString().includes(search.value) ||
-      p.email.toLowerCase().includes(search.value.toLowerCase())
+  return pegawai.value.filter((item) => {
+    const query = search.value.toLowerCase()
+    const searchMatch = !query
+      || item.name.toLowerCase().includes(query)
+      || item.id.toString().includes(query)
+      || item.email.toLowerCase().includes(query)
 
-    const deptMatch = !selectedDepartment.value || p.department === selectedDepartment.value
-    const statusMatch = !selectedStatus.value || p.status === selectedStatus.value
+    const departmentMatch = !selectedDepartment.value || item.department === selectedDepartment.value
+    const roleMatch = !selectedRole.value || item.role === selectedRole.value
 
-    return searchMatch && deptMatch && statusMatch
+    return searchMatch && departmentMatch && roleMatch
   })
+})
+
+const totalPegawai = computed(() => meta.value?.total ?? pegawai.value.length)
+const lastPage = computed(() => Math.max(meta.value?.last_page ?? 1, 1))
+
+const changePage = async (value: number) => {
+  if (value < 1 || value > lastPage.value || value === page.value) return
+  page.value = value
+  await fetchUsers({ page: value })
+}
+
+onMounted(() => {
+  fetchUsers({ page: 1 }).catch(() => {})
 })
 </script>
 
@@ -187,6 +233,12 @@ const filteredPegawai = computed(() => {
 }
 
 .page-header h1 { margin: 0; font-size: 23px; font-weight: 700; color: var(--text); }
+
+.data-error {
+  margin-bottom: 16px; padding: 11px 14px;
+  border: 1px solid #f4c7c7; border-radius: 8px;
+  background: #fff5f5; color: #b42318; font-size: 10px;
+}
 
 /* FILTER CARD */
 .filter-card {
@@ -242,8 +294,15 @@ tbody tr:last-child td { border-bottom: none; }
   padding: 4px 9px; border-radius: 5px;
   font-size: 9px; font-weight: 600; white-space: nowrap;
 }
+.role-badge {
+  display: inline-flex; align-items: center;
+  padding: 4px 9px; border-radius: 5px;
+  background: #eef1f7; color: #667085;
+  font-size: 9px; font-weight: 600; white-space: nowrap;
+}
 .active { background: #dff7ef; color: #18a77c; }
 .nonactive { background: #ffe8e8; color: #ef5350; }
+.table-state { height: 90px; text-align: center; color: #8792a5; font-size: 11px; }
 
 .detail-button {
   display: inline-block; margin: auto;

@@ -23,22 +23,20 @@
         <div class="form-row">
           <div class="form-group">
             <label>Tujuan Kota <span>*</span></label>
-            <input type="text" placeholder="Pilih kota tujuan" />
+            <input v-model="form.tujuan" type="text" placeholder="Pilih kota tujuan" required/>
           </div>
 
           <div class="form-group">
             <label>Tanggal Berangkat <span>*</span></label>
             <div class="input-with-icon">
-              <input type="date" />
-              <span>▣</span>
+              <input v-model="form.tanggal_berangkat" type="date" :min="today" required/>
             </div>
           </div>
 
           <div class="form-group">
             <label>Tanggal Kembali <span>*</span></label>
             <div class="input-with-icon">
-              <input type="date" />
-              <span>▣</span>
+              <input v-model="form.tanggal_pulang" type="date" :min="form.tanggal_berangkat || today" required/>
             </div>
           </div>
         </div>
@@ -46,56 +44,160 @@
         <!-- Row 2 -->
         <div class="form-row">
           <div class="form-group">
-            <label>Jenis Perjalanan <span>*</span></label>
-            <select>
-              <option value="">Pilih jenis perjalanan</option>
-              <option value="dinas">Perjalanan Dinas</option>
-              <option value="meeting">Meeting</option>
-              <option value="training">Training</option>
-              <option value="lainnya">Lainnya</option>
+            <label>Kebutuhan Perjalanan <small>(Opsional)</small></label>
+            <select v-model="form.needs">
+              <option value="">Tidak ada kebutuhan khusus</option>
+              <option value="transportasi">Transportasi</option>
+              <option value="penginapan">Penginapan</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label>Tujuan/Keperluan <span>*</span></label>
-            <textarea rows="4" placeholder="Masukkan tujuan atau keperluan perjalanan secara detail..."></textarea>
+            <label>Estimasi Biaya <small>(Opsional)</small></label>
+            <div class="currency-input">
+              <span>Rp</span>
+              <input
+                v-model.number="form.estimasi_biaya"
+                type="number"
+                min="0"
+                step="1000"
+                placeholder="0"
+              />
+            </div>
           </div>
         </div>
 
         <!-- Row 3 -->
         <div class="form-row">
-          <div class="form-group">
-            <label>Estimasi Anggaran <span>*</span></label>
-            <div class="currency-input">
-              <span>Rp</span>
-              <input type="number" placeholder="0" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>Lampiran <small>(Opsional)</small></label>
-            <div class="file-input">
-              <label class="file-button">
-                Pilih File
-                <input type="file" />
-              </label>
-              <span class="file-name">Belum ada file dipilih</span>
-            </div>
+          <div class="form-group full">
+            <label>Tujuan/Keperluan <span>*</span></label>
+            <textarea v-model="form.keperluan" rows="4" placeholder="Masukkan tujuan atau keperluan perjalanan secara detail..." required></textarea>
           </div>
         </div>
       </div>
 
       <!-- Footer -->
       <div class="form-footer">
-        <button type="button" class="cancel-button">Batal</button>
-        <button type="button" class="submit-button">Ajukan Perjalanan</button>
+        <button
+          type="button"
+          class="cancel-button"
+          @click="resetForm"
+          :disabled="loading"
+        >
+          Batal
+        </button>
+
+        <button
+          type="button"
+          class="submit-button"
+          @click="handleSubmit"
+          :disabled="loading"
+        >
+          {{ loading ? 'Mengirim...' : 'Ajukan Perjalanan' }}
+        </button>
       </div>
+
+      <p v-if="message" class="form-feedback success" role="status">{{ message }}</p>
+      <p v-if="errorMessage" class="form-feedback error" role="alert">{{ errorMessage }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 // Form state can be added here
+
+import { computed, reactive, ref } from 'vue'
+import { useTrips } from '~/composables/useTrips'
+import { apiErrorMessage } from '~/composables/useApi'
+
+const { createTrip, submitTrip } = useTrips()
+
+const today = computed(() => {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+})
+
+const form = reactive({
+  tujuan: '',
+  tanggal_berangkat: '',
+  tanggal_pulang: '',
+  keperluan: '',
+  estimasi_biaya: '' as number | '',
+  needs: '' as '' | 'transportasi' | 'penginapan',
+})
+
+const loading = ref(false)
+const message = ref('')
+const errorMessage = ref('')
+
+const resetForm = () => {
+  form.tujuan = ''
+  form.tanggal_berangkat = ''
+  form.tanggal_pulang = ''
+  form.keperluan = ''
+  form.estimasi_biaya = ''
+  form.needs = ''
+  message.value = ''
+  errorMessage.value = ''
+}
+
+const handleSubmit = async () => {
+  message.value = ''
+  errorMessage.value = ''
+
+  if (
+    !form.tujuan.trim() ||
+    !form.tanggal_berangkat ||
+    !form.tanggal_pulang ||
+    !form.keperluan.trim()
+  ) {
+    errorMessage.value = 'Lengkapi semua field wajib.'
+    return
+  }
+
+  if (form.tanggal_pulang < form.tanggal_berangkat) {
+    errorMessage.value = 'Tanggal kembali tidak boleh sebelum tanggal berangkat.'
+    return
+  }
+
+  const estimasi = form.estimasi_biaya === '' ? null : Number(form.estimasi_biaya)
+
+  if (estimasi !== null && (!Number.isFinite(estimasi) || estimasi < 0)) {
+    errorMessage.value = 'Estimasi biaya tidak valid.'
+    return
+  }
+
+  loading.value = true
+
+  try {
+    const created = await createTrip({
+      tujuan: form.tujuan.trim(),
+      tanggal_berangkat: form.tanggal_berangkat,
+      tanggal_pulang: form.tanggal_pulang,
+      keperluan: form.keperluan.trim(),
+      estimasi_biaya: estimasi,
+      needs: form.needs
+        ? [{ jenis: form.needs, keterangan: null }]
+        : undefined,
+    })
+
+    await submitTrip(created.id)
+
+    message.value = 'Perjalanan berhasil diajukan!'
+    resetForm()
+  } catch (err) {
+    errorMessage.value = apiErrorMessage(
+      err,
+      'Gagal mengajukan perjalanan. Periksa koneksi atau respons API.'
+    )
+  } finally {
+    loading.value = false
+  }
+}
+
 </script>
 
 <style scoped>
@@ -141,6 +243,7 @@
 
 /* FORM GROUP */
 .form-group { display: flex; flex-direction: column; gap: 7px; }
+.form-group.full { grid-column: 1 / -1; }
 
 .form-group label { font-size: 12px; font-weight: 600; color: var(--text); }
 .form-group label span { color: #ef4444; }
@@ -168,6 +271,9 @@
 
 /* FOOTER */
 .form-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 24px 20px; border-top: 1px solid #e5e8ee; }
+.form-feedback { margin: 0; padding: 10px 24px 16px; font-size: 11px; }
+.form-feedback.success { color: #18a77c; }
+.form-feedback.error { color: #dc2626; }
 .cancel-button, .submit-button { min-width: 61px; padding: 8px 14px; border-radius: 6px; font-family: inherit; font-size: 10px; cursor: pointer; }
 .cancel-button { border: 1px solid var(--primary); background: var(--white); color: var(--primary); }
 .submit-button { border: 1px solid var(--primary); background: var(--primary); color: var(--white); }

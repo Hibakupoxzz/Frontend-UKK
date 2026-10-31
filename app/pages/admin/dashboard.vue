@@ -68,7 +68,11 @@
             <h2>Ringkasan Perjalanan</h2>
             <p>Distribusi perjalanan berdasarkan status</p>
             <p class="total-cost">
-              Total biaya: {{ formatCurrency(summary?.total_biaya) }}
+              Realisasi biaya: {{ formatCurrency(summary?.total_biaya) }}
+            </p>
+            <p v-if="(summary?.perjalanan_dengan_estimasi ?? 0) > 0" class="total-cost">
+              Estimasi: {{ formatCurrency(summary?.total_estimasi) }}
+              · Selisih: {{ formatCurrency(summary?.total_selisih) }}
             </p>
           </div>
 

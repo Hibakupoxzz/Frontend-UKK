@@ -8,6 +8,10 @@ export interface User {
   department?: string
   position?: string
   avatar?: string
+  no_hp?: string
+  jabatan?: string
+  foto_url?: string
+  is_active?: boolean
 }
 
 interface ApiUser {
@@ -15,6 +19,10 @@ interface ApiUser {
   name: string
   email: string
   department?: string | null
+  no_hp?: string | null
+  jabatan?: string | null
+  foto_url?: string | null
+  is_active?: boolean
   role?: string | null
   roles?: string[] | null
 }
@@ -53,6 +61,10 @@ const toUser = (payload: ApiUser): User => {
     email: payload.email,
     role,
     department: payload.department ?? undefined,
+    no_hp: payload.no_hp ?? undefined,
+    jabatan: payload.jabatan ?? undefined,
+    foto_url: payload.foto_url ?? undefined,
+    is_active: payload.is_active,
   }
 }
 
@@ -107,6 +119,20 @@ export const useAuth = () => {
     user.value = null
     token.value = null
     isAuthenticated.value = false
+
+    // Bersihkan state notifikasi agar akun berikutnya tidak melihat sisa data.
+    try {
+      useState('notifications_items', () => []).value = []
+      useState('notifications_unread', () => 0).value = 0
+      useState('notifications_meta', () => null).value = null
+      useState('notifications_loaded', () => false).value = false
+      useState<string | null>('notifications_error', () => null).value = null
+      useState('notification_preferences_loaded', () => false).value = false
+      useState<string | null>('notification_preferences_error', () => null).value = null
+      useState<string | null>('notification_preferences_message', () => null).value = null
+    } catch {
+      // useState belum tersedia (mis. di luar konteks Nuxt); abaikan.
+    }
 
     if (import.meta.client) {
       localStorage.removeItem(STORAGE_KEY)
@@ -190,6 +216,18 @@ export const useAuth = () => {
     isAuthenticated.value = true
   }
 
+  // Menyinkronkan data profil terbaru (hasil PUT /me) ke sesi lokal.
+  const setUser = (payload: Partial<User>) => {
+    if (!user.value) return
+
+    const updated = { ...user.value, ...payload }
+    user.value = updated
+
+    if (token.value) {
+      persistSession(updated, token.value)
+    }
+  }
+
   const hasRole = (roles: UserRole | UserRole[]) => {
     if (!user.value) return false
     const roleArray = Array.isArray(roles) ? roles : [roles]
@@ -214,6 +252,7 @@ export const useAuth = () => {
     logout,
     initAuth,
     clearSession,
+    setUser,
     hasRole,
     getInitials,
   }

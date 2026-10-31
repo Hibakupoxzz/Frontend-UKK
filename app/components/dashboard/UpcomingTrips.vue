@@ -6,7 +6,7 @@
         <p>Jadwal perjalanan yang akan datang</p>
       </div>
 
-      <NuxtLink to="/pengajuan-perjalanan">
+      <NuxtLink to="/admin/perjalanan-dinas">
         Lihat Semua
       </NuxtLink>
     </div>

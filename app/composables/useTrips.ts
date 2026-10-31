@@ -1,5 +1,5 @@
 import type { CreateTripPayload, Paginated, Trip, TripQuery } from '~/types/api'
-import { apiErrorMessage } from '~/composables/useApi'
+import { apiErrorMessage, unwrapData } from '~/composables/useApi'
 
 export const useTrips = () => {
   const { get, post, put, remove, request } = useApi()
@@ -39,7 +39,7 @@ export const useTrips = () => {
     error.value = null
 
     try {
-      return await get<Trip>(`/trips/${id}`)
+      return unwrapData(await get<Trip | { data: Trip }>(`/trips/${id}`))
     } catch (err) {
       error.value = apiErrorMessage(err, 'Gagal memuat detail perjalanan.')
       throw err
@@ -48,17 +48,22 @@ export const useTrips = () => {
     }
   }
 
-  const createTrip = (payload: CreateTripPayload) => post<Trip>('/trips', payload)
+  const createTrip = async (payload: CreateTripPayload) =>
+    unwrapData(await post<Trip | { data: Trip }>('/trips', payload))
 
-  const updateTrip = (id: number | string, payload: CreateTripPayload) => put<Trip>(`/trips/${id}`, payload)
+  const updateTrip = async (id: number | string, payload: CreateTripPayload) =>
+    unwrapData(await put<Trip | { data: Trip }>(`/trips/${id}`, payload))
 
   const deleteTrip = (id: number | string) => remove<{ message: string }>(`/trips/${id}`)
 
-  const submitTrip = (id: number | string) => post<Trip>(`/trips/${id}/submit`)
+  const submitTrip = async (id: number | string) =>
+    unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/submit`))
 
-  const startTrip = (id: number | string) => post<Trip>(`/trips/${id}/start`)
+  const startTrip = async (id: number | string) =>
+    unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/start`))
 
-  const finishTrip = (id: number | string) => post<Trip>(`/trips/${id}/finish`)
+  const finishTrip = async (id: number | string) =>
+    unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/finish`))
 
   const uploadDocument = async (id: number | string, file: File, jenis?: string) => {
     const form = new FormData()
@@ -70,6 +75,9 @@ export const useTrips = () => {
       body: form,
     })
   }
+
+  const deleteDocument = (documentId: number | string) =>
+    remove<{ message: string }>(`/documents/${documentId}`)
 
   return {
     trips,
@@ -85,5 +93,6 @@ export const useTrips = () => {
     startTrip,
     finishTrip,
     uploadDocument,
+    deleteDocument,
   }
 }

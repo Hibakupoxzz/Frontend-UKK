@@ -41,11 +41,18 @@
 
       <div class="side-column">
         <section class="panel">
-          <h2>Total Biaya</h2>
+          <h2>Estimasi vs Realisasi</h2>
           <dl class="cost-list">
-            <div class="total"><dt>Total Biaya</dt><dd>{{ formatCurrency(trip.total_biaya) }}</dd></div>
+            <div><dt>Estimasi Anggaran</dt><dd>{{ formatCurrencyOrDash(trip.estimasi_biaya) }}</dd></div>
+            <div><dt>Realisasi Biaya</dt><dd>{{ formatCurrency(trip.total_biaya) }}</dd></div>
+            <div class="total">
+              <dt>Selisih</dt>
+              <dd :class="varianceClass">{{ formatCurrencyOrDash(trip.selisih_biaya) }}</dd>
+            </div>
           </dl>
-          <p class="cost-note">Nilai diambil dari data pengeluaran perjalanan yang tercatat.</p>
+          <p class="cost-note">
+            Realisasi diambil dari pengeluaran yang tercatat. Estimasi diisi pegawai saat mengajukan perjalanan.
+          </p>
         </section>
 
         <section class="panel">
@@ -143,6 +150,15 @@ const { fetchTrip, loading, error } = useTrips()
 const { approve, reject } = useApprovals()
 
 const canDecide = computed(() => trip.value?.status === 'diajukan')
+
+const formatCurrencyOrDash = (value: number | null | undefined) =>
+  value === null || value === undefined ? '—' : formatCurrency(value)
+
+const varianceClass = computed(() => {
+  const variance = trip.value?.selisih_biaya
+  if (variance === null || variance === undefined || variance === 0) return ''
+  return variance > 0 ? 'over-budget' : 'under-budget'
+})
 
 const duration = computed(() => {
   if (!trip.value) return '—'
@@ -247,6 +263,8 @@ dd { margin: 6px 0 0; color: var(--text); font-size: 12px; font-weight: 500; ove
 .cost-list dd { margin: 0; }
 .cost-list .total { padding-top: 13px; border-top: 1px solid var(--border); font-weight: 700; }
 .cost-list .total dt, .cost-list .total dd { color: var(--text); font-weight: 700; }
+.cost-list dd.over-budget { color: #b42318; }
+.cost-list dd.under-budget { color: #15803d; }
 .cost-note, .decision-note { margin: 13px 0 0; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
 .list-panel { grid-column: 1 / -1; }
 .need-list, .document-list, .approval-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }

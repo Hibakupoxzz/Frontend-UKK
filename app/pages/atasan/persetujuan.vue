@@ -48,7 +48,7 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>ID Pengajuan</th><th>Nama Pegawai</th><th>Departemen</th><th>Tujuan</th><th>Tanggal Perjalanan</th><th>Estimasi Biaya</th><th>Status</th><th>Aksi</th></tr>
+            <tr><th>ID Pengajuan</th><th>Nama Pegawai</th><th>Departemen</th><th>Tujuan</th><th>Tanggal Perjalanan</th><th>Estimasi / Realisasi</th><th>Status</th><th>Aksi</th></tr>
           </thead>
           <tbody>
             <tr v-if="loading && requests.length === 0">
@@ -60,7 +60,7 @@
               </td>
             </tr>
             <tr v-for="request in filteredRequests" :key="request.id">
-              <td>{{ request.id }}</td><td>{{ request.employee }}</td><td>{{ request.department }}</td><td>{{ request.destination }}</td><td>{{ request.date }}</td><td>{{ request.estimate }}</td>
+              <td>{{ request.id }}</td><td>{{ request.employee }}</td><td>{{ request.department }}</td><td>{{ request.destination }}</td><td>{{ request.date }}</td><td>{{ request.estimate }} / {{ request.realization }}</td>
               <td><span class="status" :class="request.statusClass">{{ request.status }}</span></td>
               <td><NuxtLink :to="`/atasan/persetujuan/${request.id}`" class="detail-link">Tinjau</NuxtLink></td>
             </tr>
@@ -87,6 +87,7 @@ interface ApprovalRequest {
   date: string
   departure: string
   estimate: string
+  realization: string
   status: string
   statusClass: string
   rawStatus: TripStatus
@@ -106,7 +107,8 @@ const requests = computed<ApprovalRequest[]>(() => trips.value.map((trip) => ({
   destination: trip.tujuan,
   date: formatDate(trip.tanggal_berangkat),
   departure: trip.tanggal_berangkat,
-  estimate: formatCurrency(trip.total_biaya),
+  estimate: trip.estimasi_biaya === null ? '—' : formatCurrency(trip.estimasi_biaya),
+  realization: formatCurrency(trip.total_biaya),
   status: tripStatusLabel(trip.status),
   statusClass: tripStatusClass(trip.status),
   rawStatus: trip.status,

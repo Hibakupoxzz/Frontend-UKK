@@ -26,7 +26,7 @@
       <div class="stat-card">
         <div class="stat-icon orange">⏳</div>
         <div>
-          <p>Menunggu Perhatian</p>
+          <p>Menunggu Persetujuan</p>
           <h2>{{ pendingCount }}</h2>
         </div>
       </div>
@@ -38,13 +38,15 @@
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon blue">📊</div>
+        <div class="stat-icon blue">▶</div>
         <div>
-          <p>Memerlukan Perhatian</p>
-          <h2>{{ attentionCount }}</h2>
+          <p>Sedang Berlangsung</p>
+          <h2>{{ ongoingCount }}</h2>
         </div>
       </div>
     </div>
+
+    <div v-if="error" class="data-error" role="alert">{{ error }}</div>
 
     <!-- Filter Card -->
     <div class="filter-card">
@@ -60,8 +62,8 @@
         <label>Status</label>
         <select v-model="selectedStatus">
           <option value="">Semua</option>
-          <option value="menunggu">Menunggu</option>
-          <option value="berlangsung">Berlangsung</option>
+          <option value="diajukan">Menunggu</option>
+          <option value="berjalan">Berlangsung</option>
           <option value="selesai">Selesai</option>
         </select>
       </div>
@@ -70,10 +72,9 @@
         <label>Departemen</label>
         <select v-model="selectedDepartment">
           <option value="">Semua</option>
-          <option value="Marketing">Marketing</option>
-          <option value="Sales">Sales</option>
-          <option value="HRD">HRD</option>
-          <option value="Finance">Finance</option>
+          <option v-for="department in departmentOptions" :key="department" :value="department">
+            {{ department }}
+          </option>
         </select>
       </div>
     </div>
@@ -94,13 +95,23 @@
             </tr>
           </thead>
           <tbody>
+            <tr v-if="loading && trips.length === 0">
+              <td colspan="7" class="table-state">Memuat data perjalanan...</td>
+            </tr>
+            <tr v-else-if="filteredTrips.length === 0">
+              <td colspan="7" class="table-state">Tidak ada data perjalanan.</td>
+            </tr>
             <tr v-for="(trip, index) in filteredTrips" :key="trip.id">
               <td>{{ index + 1 }}</td>
-              <td>{{ trip.employee }}</td>
-              <td>{{ trip.destination }}</td>
-              <td>{{ trip.startDate }}</td>
-              <td>{{ trip.endDate }}</td>
-              <td><span class="status-badge" :class="trip.statusClass">{{ trip.status }}</span></td>
+              <td>{{ trip.user?.name || '—' }}</td>
+              <td>{{ trip.tujuan }}</td>
+              <td>{{ formatDate(trip.tanggal_berangkat) }}</td>
+              <td>{{ formatDate(trip.tanggal_pulang) }}</td>
+              <td>
+                <span class="status-badge" :class="tripStatusClass(trip.status)">
+                  {{ tripStatusLabel(trip.status) }}
+                </span>
+              </td>
               <td>
                 <NuxtLink :to="`/hrd/detail-perjalanan/${trip.id}`" class="detail-button">Detail</NuxtLink>
               </td>
@@ -114,21 +125,27 @@
         <article v-for="(trip, index) in filteredTrips" :key="`card-${trip.id}`" class="trip-card">
           <div class="trip-card-header">
             <span class="trip-card-number">Perjalanan #{{ index + 1 }}</span>
-            <span class="status-badge" :class="trip.statusClass">{{ trip.status }}</span>
+            <span class="status-badge" :class="tripStatusClass(trip.status)">
+              {{ tripStatusLabel(trip.status) }}
+            </span>
           </div>
-          <div class="trip-card-title">{{ trip.destination }}</div>
+          <div class="trip-card-title">{{ trip.tujuan }}</div>
           <dl class="trip-card-details">
             <div>
               <dt>Pegawai</dt>
-              <dd>{{ trip.employee }}</dd>
+              <dd>{{ trip.user?.name || '—' }}</dd>
+            </div>
+            <div>
+              <dt>Departemen</dt>
+              <dd>{{ trip.user?.department || '—' }}</dd>
             </div>
             <div>
               <dt>Tanggal Berangkat</dt>
-              <dd>{{ trip.startDate }}</dd>
+              <dd>{{ formatDate(trip.tanggal_berangkat) }}</dd>
             </div>
             <div>
               <dt>Tanggal Kembali</dt>
-              <dd>{{ trip.endDate }}</dd>
+              <dd>{{ formatDate(trip.tanggal_pulang) }}</dd>
             </div>
           </dl>
           <div class="trip-card-actions">
@@ -141,52 +158,67 @@
       <!-- Pagination -->
       <div class="table-footer">
         <span class="showing-text">Menampilkan {{ filteredTrips.length }} dari {{ trips.length }} data</span>
-        <div class="pagination">
-          <button class="page-button active">1</button>
-          <button class="page-button">2</button>
-          <button class="page-button">3</button>
-        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useTrips } from '~/composables/useTrips'
+import { formatDate, tripStatusClass, tripStatusLabel } from '~/utils/format'
 
 const search = ref('')
 const selectedStatus = ref('')
 const selectedDepartment = ref('')
 
-const trips = ref([
-  { id: 1, employee: 'Andi Saputra', destination: 'Jakarta - Bandung', startDate: '10 Mei 2026', endDate: '12 Mei 2026', status: 'Menunggu', statusClass: 'waiting' },
-  { id: 2, employee: 'Sinta Maharani', destination: 'Jakarta - Surabaya', startDate: '15 Mei 2026', endDate: '18 Mei 2026', status: 'Berlangsung', statusClass: 'ongoing' },
-  { id: 3, employee: 'Dewi Lestari', destination: 'Jakarta - Yogyakarta', startDate: '20 Mei 2026', endDate: '22 Mei 2026', status: 'Selesai', statusClass: 'completed' },
-  { id: 4, employee: 'Budi Santoso', destination: 'Jakarta - Semarang', startDate: '25 Mei 2026', endDate: '27 Mei 2026', status: 'Menunggu', statusClass: 'waiting' },
-  { id: 5, employee: 'Rudi Hartono', destination: 'Jakarta - Medan', startDate: '01 Juni 2026', endDate: '03 Juni 2026', status: 'Berlangsung', statusClass: 'ongoing' },
-  { id: 6, employee: 'Maya Putri', destination: 'Jakarta - Bali', startDate: '05 Juni 2026', endDate: '07 Juni 2026', status: 'Selesai', statusClass: 'completed' },
-  { id: 7, employee: 'Joko Widodo', destination: 'Jakarta - Bandung', startDate: '10 Mei 2026', endDate: '12 Mei 2026', status: 'Menunggu', statusClass: 'waiting' },
-  { id: 8, employee: 'Fitriani', destination: 'Jakarta - Surabaya', startDate: '15 Mei 2026', endDate: '18 Mei 2026', status: 'Berlangsung', statusClass: 'ongoing' },
-])
+const { trips, loading, error, fetchTrips } = useTrips()
+
+const departmentOptions = computed(() => {
+  const values = new Set<string>()
+
+  for (const trip of trips.value) {
+    if (trip.user?.department) values.add(trip.user.department)
+  }
+
+  return Array.from(values).sort((a, b) => a.localeCompare(b))
+})
+
+const statusMatches = (status: string, filter: string) => {
+  if (!filter) return true
+  if (filter === 'selesai') return status === 'selesai' || status === 'lengkap'
+  return status === filter
+}
 
 const filteredTrips = computed(() => {
-  return trips.value.filter(trip => {
-    const searchMatch = !search.value ||
-      trip.employee.toLowerCase().includes(search.value.toLowerCase()) ||
-      trip.destination.toLowerCase().includes(search.value.toLowerCase())
+  const query = search.value.trim().toLowerCase()
 
-    const statusMatch = !selectedStatus.value || trip.status === selectedStatus.value
-    const deptMatch = !selectedDepartment.value || true // Filter departemen bisa ditambahkan
+  return trips.value.filter((trip) => {
+    const searchMatch = !query
+      || (trip.user?.name ?? '').toLowerCase().includes(query)
+      || trip.tujuan.toLowerCase().includes(query)
 
-    return searchMatch && statusMatch
+    const statusMatch = statusMatches(trip.status, selectedStatus.value)
+    const deptMatch = !selectedDepartment.value || trip.user?.department === selectedDepartment.value
+
+    return searchMatch && statusMatch && deptMatch
   })
 })
 
-// Computed summary values
 const totalTrips = computed(() => trips.value.length)
-const pendingCount = computed(() => trips.value.filter(t => t.status === 'Menunggu').length)
-const completedCount = computed(() => trips.value.filter(t => t.status === 'Selesai').length)
-const attentionCount = computed(() => trips.value.filter(t => t.status === 'Menunggu').length)
+const pendingCount = computed(() => trips.value.filter((trip) => trip.status === 'diajukan').length)
+const completedCount = computed(
+  () => trips.value.filter((trip) => trip.status === 'selesai' || trip.status === 'lengkap').length,
+)
+const ongoingCount = computed(() => trips.value.filter((trip) => trip.status === 'berjalan').length)
+
+onMounted(async () => {
+  try {
+    await fetchTrips({ per_page: 100 })
+  } catch {
+    // pesan error sudah disimpan oleh composable
+  }
+})
 </script>
 
 <style scoped>
@@ -312,8 +344,13 @@ tbody tr:last-child td { border-bottom: none; }
   font-size: 9px; font-weight: 600; white-space: nowrap;
 }
 .waiting { background: #fff3df; color: #ef9b16; }
-.ongoing { background: #e8efff; color: var(--primary); }
+.draft { background: #eef1f7; color: #667085; }
+.approved { background: #e8efff; color: var(--primary); }
+.rejected { background: #ffe8e8; color: #ef5350; }
+.ongoing { background: #fff3df; color: #ef9b16; }
 .completed { background: #dff7ef; color: #18a77c; }
+.data-error { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #f4c7c7; border-radius: 8px; background: #fff5f5; color: #b42318; font-size: 11px; }
+.table-state { padding: 22px 12px; text-align: center; font-size: 10px; color: #8792a5; }
 
 .detail-button {
   display: inline-block; margin: auto;
@@ -321,6 +358,8 @@ tbody tr:last-child td { border-bottom: none; }
   color: #1769ff; font-family: inherit; font-size: 10px; font-weight: 600; cursor: pointer; text-decoration: none;
 }
 .detail-button:hover { text-decoration: underline; }
+.detail-button.disabled { color: #9aa4b5; cursor: not-allowed; }
+.detail-button.disabled:hover { text-decoration: none; }
 
 /* MOBILE CARDS */
 .trip-cards { display: none; }

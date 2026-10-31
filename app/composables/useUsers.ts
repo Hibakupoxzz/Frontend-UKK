@@ -1,14 +1,5 @@
-import type { ApiUser, Paginated, UserQuery, UserRole } from '~/types/api'
-import { apiErrorMessage } from '~/composables/useApi'
-
-interface UserPayload {
-  name: string
-  email: string
-  password?: string
-  role: UserRole
-  department?: string | null
-  atasan_id?: number | null
-}
+import type { ApiUser, CreateUserPayload, Paginated, UpdateUserPayload, UserQuery } from '~/types/api'
+import { apiErrorMessage, unwrapData } from '~/composables/useApi'
 
 export const useUsers = () => {
   const { get, post, put, remove } = useApi()
@@ -27,6 +18,7 @@ export const useUsers = () => {
         ...params,
         q: params.q || undefined,
         role: params.role || undefined,
+        is_active: params.is_active === '' ? undefined : params.is_active,
       })
 
       users.value = response.data
@@ -41,12 +33,14 @@ export const useUsers = () => {
     }
   }
 
-  const fetchUser = (id: number | string) => get<ApiUser>(`/users/${id}`)
+  const fetchUser = async (id: number | string) =>
+    unwrapData(await get<ApiUser | { data: ApiUser }>(`/users/${id}`))
 
-  const createUser = (payload: UserPayload) => post<ApiUser>('/users', payload)
+  const createUser = async (payload: CreateUserPayload) =>
+    unwrapData(await post<ApiUser | { data: ApiUser }>('/users', payload))
 
-  const updateUser = (id: number | string, payload: Partial<UserPayload>) =>
-    put<ApiUser>(`/users/${id}`, payload)
+  const updateUser = async (id: number | string, payload: UpdateUserPayload) =>
+    unwrapData(await put<ApiUser | { data: ApiUser }>(`/users/${id}`, payload))
 
   const deleteUser = (id: number | string) => remove<{ message: string }>(`/users/${id}`)
 

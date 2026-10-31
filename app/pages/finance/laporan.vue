@@ -30,8 +30,8 @@
           ▤
         </div>
         <div>
-          <p>Total Pembayaran</p>
-          <h2>{{ formatCurrency(totalPayments) }}</h2>
+          <p>Jumlah Pengeluaran</p>
+          <h2>{{ expenseRows.length }}</h2>
         </div>
       </div>
       <div class="summary-card">
@@ -39,8 +39,8 @@
           ▤
         </div>
         <div>
-          <p>Total Sisa Belum Dibayar</p>
-          <h2>{{ formatCurrency(unpaidAmount) }}</h2>
+          <p>Tanpa Bukti</p>
+          <h2>{{ formatCurrency(withoutReceipt) }}</h2>
         </div>
       </div>
       <div class="summary-card">
@@ -48,39 +48,50 @@
           ││
         </div>
         <div>
-          <p>Total Estimasi</p>
-          <h2>{{ formatCurrency(totalEstimates) }}</h2>
+          <p>Dengan Bukti</p>
+          <h2>{{ formatCurrency(withReceipt) }}</h2>
         </div>
       </div>
     </div>
 
     <!-- Filter -->
     <div class="filter-section">
-      <select v-model="selectedYear">
-        <option value="2026">Tahun 2026</option>
-        <option value="2025">Tahun 2025</option>
-        <option value="2024">Tahun 2024</option>
+      <select v-model="selectedYear" aria-label="Tahun laporan">
+        <option v-for="year in yearOptions" :key="year" :value="String(year)">Tahun {{ year }}</option>
       </select>
 
-      <select v-model="selectedDepartment">
-        <option value="Semua">Semua Departemen</option>
-        <option value="Marketing">Departemen: Marketing</option>
-        <option value="Sales">Departemen: Sales</option>
-        <option value="HRD">Departemen: HRD</option>
-        <option value="Finance">Departemen: Finance</option>
-      </select>
+      <button
+        class="export-button"
+        type="button"
+        :disabled="exporting || loading"
+        @click="exportReport('pdf')"
+      >
+        {{ exporting ? 'Menyiapkan...' : '↓ Ekspor PDF' }}
+      </button>
 
-      <button class="export-button" @click="exportReport">
-        ↓ Ekspor Laporan
+      <button
+        class="export-button"
+        type="button"
+        :disabled="exporting || loading"
+        @click="exportReport('xlsx')"
+      >
+        ↓ Ekspor Excel
       </button>
     </div>
+
+    <div v-if="error" class="data-error" role="alert">{{ error }}</div>
+    <div v-if="exportError" class="data-error" role="alert">{{ exportError }}</div>
 
     <!-- Chart Section -->
     <section class="expense-card">
       <div class="section-header">
         <h2>Pengeluaran per Bulan</h2>
       </div>
-      <div class="chart">
+      <div v-if="loading" class="chart-empty">Memuat laporan...</div>
+      <div v-else-if="monthlyExpenses.length === 0" class="chart-empty">
+        Belum ada pengeluaran pada periode ini.
+      </div>
+      <div v-else class="chart">
         <div v-for="item in monthlyExpenses" :key="item.month" class="chart-item">
           <div class="bar-wrapper">
             <div class="bar" :style="{ height: `${item.percentage}%` }"></div>
@@ -90,39 +101,47 @@
         </div>
       </div>
       <div class="chart-footer">
-        <span>S6 Kuartal Pertama 2026</span>
-        <button>Detail Biaya</button>
+        <span>{{ expenseFooter || 'Total pengeluaran: Rp 0' }}</span>
       </div>
     </section>
 
-    <!-- Report History -->
+    <!-- Report Table -->
     <section class="history-card">
-      <h2>Riwayat Laporan Keuangan</h2>
+      <h2>Rincian Pengeluaran</h2>
 
       <div class="table-wrapper">
         <table>
           <thead>
             <tr>
               <th>No</th>
-              <th>Nama Laporan</th>
-              <th>Periode</th>
-              <th>Tanggal Dibuat</th>
-              <th>Aksi</th>
+              <th>Pegawai</th>
+              <th>Tujuan</th>
+              <th>Tanggal</th>
+              <th>Jenis</th>
+              <th>Jumlah</th>
+              <th>Bukti</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="report in reports" :key="report.id">
-              <td>{{ report.id }}</td>
+            <tr v-if="loading && expenseRows.length === 0">
+              <td colspan="7" class="table-state">Memuat laporan...</td>
+            </tr>
+            <tr v-else-if="expenseRows.length === 0">
+              <td colspan="7" class="table-state">Belum ada pengeluaran pada periode ini.</td>
+            </tr>
+            <tr v-for="(row, index) in expenseRows" :key="`${row.employee}-${row.dateKey}-${index}`">
+              <td>{{ index + 1 }}</td>
               <td>
-                <strong>{{ report.name }}</strong>
+                <strong>{{ row.employee }}</strong>
               </td>
-              <td>{{ report.period }}</td>
-              <td>{{ report.date }}</td>
+              <td>{{ row.destination }}</td>
+              <td>{{ row.date }}</td>
+              <td>{{ row.jenis }}</td>
+              <td>{{ formatCurrency(row.amount) }}</td>
               <td>
-                <div class="table-actions">
-                  <button title="Download" @click="downloadReport(report)">↓</button>
-                  <button title="Lihat" @click="viewReport(report)">◉</button>
-                </div>
+                <span class="status-badge" :class="row.receipts > 0 ? 'completed' : 'waiting'">
+                  {{ row.receipts > 0 ? `${row.receipts} file` : 'Belum ada' }}
+                </span>
               </td>
             </tr>
           </tbody>
@@ -131,84 +150,137 @@
 
       <!-- Mobile cards -->
       <div class="report-cards">
-        <article v-for="report in reports" :key="`card-${report.id}`" class="report-card">
+        <article v-for="(row, index) in expenseRows" :key="`card-${index}`" class="report-card">
           <div class="report-card-header">
-            <span class="report-card-number">Laporan #{{ report.id }}</span>
-            <span class="report-card-period">{{ report.period }}</span>
+            <span class="report-card-number">Pengeluaran #{{ index + 1 }}</span>
+            <span class="status-badge" :class="row.receipts > 0 ? 'completed' : 'waiting'">
+              {{ row.receipts > 0 ? 'Dengan Bukti' : 'Tanpa Bukti' }}
+            </span>
           </div>
 
-          <h3 class="report-card-title">{{ report.name }}</h3>
+          <h3 class="report-card-title">{{ row.destination }}</h3>
 
           <dl class="report-card-details">
             <div>
-              <dt>Periode</dt>
-              <dd>{{ report.period }}</dd>
+              <dt>Pegawai</dt>
+              <dd>{{ row.employee }}</dd>
             </div>
 
             <div>
-              <dt>Tanggal Dibuat</dt>
-              <dd>{{ report.date }}</dd>
+              <dt>Tanggal</dt>
+              <dd>{{ row.date }}</dd>
+            </div>
+
+            <div>
+              <dt>Jenis</dt>
+              <dd>{{ row.jenis }}</dd>
+            </div>
+
+            <div>
+              <dt>Jumlah</dt>
+              <dd>{{ formatCurrency(row.amount) }}</dd>
             </div>
           </dl>
-
-          <div class="report-card-actions">
-            <button type="button" @click="downloadReport(report)">↓ Download</button>
-            <button type="button" @click="viewReport(report)">◉ Lihat</button>
-          </div>
         </article>
+        <p v-if="expenseRows.length === 0" class="empty-state">Belum ada pengeluaran pada periode ini.</p>
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useReports } from '~/composables/useReports'
+import { apiErrorMessage } from '~/composables/useApi'
+import { formatCurrency } from '~/utils/format'
 
-const selectedYear = ref('2026')
-const selectedDepartment = ref('Semua')
+const currentYear = new Date().getFullYear()
 
-const reports = ref([
-  { id: 1, name: 'Laporan Keuangan Q1 2026', period: 'Jan - Mar 2026', date: '10 Apr 2026' },
-  { id: 2, name: 'Evaluasi Tahunan Vendor Transport', period: 'Tahunan 2025', date: '15 Jan 2026' },
-  { id: 3, name: 'Klaim Hotel Luar Kota - Mei', period: 'Mei 2026', date: '01 Jun 2026' },
-  { id: 4, name: 'Rekap Tiket Kereta Api Sales', period: 'Apr 2026', date: '05 Mei 2026' },
-])
+const selectedYear = ref(String(currentYear))
+const exporting = ref(false)
+const exportError = ref('')
 
-const monthlyExpenses = ref([
-  { month: 'Jan', value: 45000000, percentage: 45 },
-  { month: 'Feb', value: 90000000, percentage: 55 },
-  { month: 'Mar', value: 68000000, percentage: 65 },
-  { month: 'Apr', value: 110000000, percentage: 75 },
-  { month: 'Mei', value: 140000000, percentage: 85 },
-  { month: 'Jun', value: 80000000, percentage: 60 },
-])
+const { expenseReport, loading, error, fetchExpenseReport, downloadReport } = useReports()
 
-// Computed values
-const totalExpenses = computed(() => monthlyExpenses.value.reduce((sum, item) => sum + item.value, 0))
-const totalPayments = computed(() => 125000000) // Mock data
-const unpaidAmount = computed(() => totalExpenses.value - totalPayments.value)
-const totalEstimates = computed(() => 150000000)
+const yearOptions = computed(() => {
+  const years = new Set<number>([currentYear, currentYear - 1, currentYear - 2])
+  return Array.from(years).sort((a, b) => b - a)
+})
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-  }).format(value)
+const asText = (value: string | number | null | undefined) => (value === null || value === undefined ? '—' : String(value))
+const asNumber = (value: string | number | null | undefined) => Number(value) || 0
+
+const expenseRows = computed(() => (expenseReport.value?.rows ?? []).map((row) => {
+  const date = asText(row[3])
+  const [day, month, year] = date.split('-')
+
+  return {
+    employee: asText(row[1]),
+    destination: asText(row[2]),
+    date,
+    dateKey: `${year}-${month}-${day}`,
+    jenis: asText(row[4]),
+    keterangan: asText(row[5]),
+    amount: asNumber(row[6]),
+    receipts: asNumber(row[7]),
+  }
+}))
+
+const totalExpenses = computed(() => expenseRows.value.reduce((sum, row) => sum + row.amount, 0))
+const withReceipt = computed(() => expenseRows.value.filter((row) => row.receipts > 0).reduce((sum, row) => sum + row.amount, 0))
+const withoutReceipt = computed(() => expenseRows.value.filter((row) => row.receipts === 0).reduce((sum, row) => sum + row.amount, 0))
+
+const monthlyExpenses = computed(() => {
+  const totals = new Map<string, number>()
+
+  for (const row of expenseRows.value) {
+    const month = row.dateKey.slice(0, 7)
+    if (month && !month.includes('undefined')) {
+      totals.set(month, (totals.get(month) ?? 0) + row.amount)
+    }
+  }
+
+  const entries = Array.from(totals.entries()).sort(([a], [b]) => a.localeCompare(b))
+  const max = entries.reduce((highest, [, total]) => Math.max(highest, total), 0)
+
+  return entries.map(([month, total]) => ({
+    month: new Intl.DateTimeFormat('id-ID', { month: 'short' }).format(new Date(`${month}-01`)),
+    value: total,
+    percentage: max > 0 ? Math.max(8, Math.round((total / max) * 100)) : 0,
+  }))
+})
+
+const expenseFooter = computed(() => expenseReport.value?.footer ?? '')
+
+const queryParams = () => ({
+  dari: `${selectedYear.value}-01-01`,
+  sampai: `${selectedYear.value}-12-31`,
+})
+
+const load = async () => {
+  await fetchExpenseReport(queryParams())
 }
 
-const exportReport = () => {
-  console.log('Export laporan:', selectedYear.value, selectedDepartment.value)
-  alert('Laporan sedang diproses untuk diekspor.')
+const exportReport = async (format: 'pdf' | 'xlsx') => {
+  exportError.value = ''
+  exporting.value = true
+
+  try {
+    await downloadReport('expenses', format, queryParams())
+  } catch (err) {
+    exportError.value = apiErrorMessage(err, 'Gagal mengunduh laporan.')
+  } finally {
+    exporting.value = false
+  }
 }
 
-const downloadReport = (report) => {
-  console.log('Download:', report)
-}
+watch(selectedYear, () => {
+  load().catch(() => {})
+})
 
-const viewReport = (report) => {
-  console.log('Lihat laporan:', report)
-}
+onMounted(() => {
+  load().catch(() => {})
+})
 </script>
 
 <style scoped>
@@ -305,6 +377,18 @@ const viewReport = (report) => {
 }
 
 .export-button:hover { opacity: 0.9; }
+.export-button:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.data-error { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #f4c7c7; border-radius: 8px; background: #fff5f5; color: #b42318; font-size: 11px; }
+.chart-empty { padding: 28px 12px; text-align: center; font-size: 11px; color: #8792a5; }
+.table-state { padding: 22px 12px; text-align: center; font-size: 10px; color: #8792a5; }
+.empty-state { padding: 20px 12px; text-align: center; font-size: 11px; color: #8792a5; }
+
+.bar-value { font-size: 8px; font-weight: 600; color: var(--primary); }
+
+.status-badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 4px; font-size: 8px; font-weight: 600; white-space: nowrap; }
+.status-badge.waiting { background: #fff3df; color: #b45309; }
+.status-badge.completed { background: #e8f7ef; color: #15803d; }
 
 /* CHART SECTION */
 .expense-card {

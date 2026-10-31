@@ -30,8 +30,8 @@
           ▤
         </div>
         <div>
-          <p>Pegawai Aktif</p>
-          <h2>{{ activeEmployees }}</h2>
+          <p>Total Biaya</p>
+          <h2>{{ formatCurrency(totalBiaya) }}</h2>
         </div>
       </div>
       <div class="summary-card">
@@ -56,26 +56,49 @@
 
     <!-- Filter -->
     <div class="filter-section">
-      <select v-model="selectedYear">
-        <option value="2026">Tahun 2026</option>
-        <option value="2025">Tahun 2025</option>
+      <select v-model="selectedYear" aria-label="Tahun laporan">
+        <option v-for="year in yearOptions" :key="year" :value="String(year)">Tahun {{ year }}</option>
       </select>
 
-      <select v-model="selectedDepartment">
-        <option value="Semua">Semua Departemen</option>
-        <option value="Marketing">Departemen: Marketing</option>
-        <option value="Sales">Departemen: Sales</option>
-        <option value="HRD">Departemen: HRD</option>
-        <option value="Finance">Departemen: Finance</option>
+      <select v-model="selectedDepartment" aria-label="Departemen laporan">
+        <option value="">Semua Departemen</option>
+        <option v-for="department in departmentOptions" :key="department" :value="department">
+          Departemen: {{ department }}
+        </option>
       </select>
+
+      <button
+        class="export-button"
+        type="button"
+        :disabled="exporting || loading"
+        @click="exportReport('pdf')"
+      >
+        {{ exporting ? 'Menyiapkan...' : '↓ Ekspor PDF' }}
+      </button>
+
+      <button
+        class="export-button"
+        type="button"
+        :disabled="exporting || loading"
+        @click="exportReport('xlsx')"
+      >
+        ↓ Ekspor Excel
+      </button>
     </div>
+
+    <div v-if="error" class="data-error" role="alert">{{ error }}</div>
+    <div v-if="exportError" class="data-error" role="alert">{{ exportError }}</div>
 
     <!-- Chart Section -->
     <section class="expense-card">
       <div class="section-header">
         <h2>Distribusi Perjalanan per Bulan</h2>
       </div>
-      <div class="chart">
+      <div v-if="loading" class="chart-empty">Memuat data laporan...</div>
+      <div v-else-if="monthlyData.length === 0" class="chart-empty">
+        Belum ada perjalanan pada periode ini.
+      </div>
+      <div v-else class="chart">
         <div v-for="item in monthlyData" :key="item.month" class="chart-item">
           <div class="bar-wrapper">
             <div class="bar" :style="{ height: `${item.percentage}%` }"></div>
@@ -86,33 +109,48 @@
       </div>
     </section>
 
-    <!-- Report History -->
+    <!-- Report Table -->
     <section class="history-card">
-      <h2>Riwayat Laporan HRD</h2>
+      <h2>Rincian Perjalanan</h2>
 
       <div class="table-wrapper">
         <table>
           <thead>
             <tr>
               <th>No</th>
-              <th>Nama Laporan</th>
-              <th>Periode</th>
-              <th>Tanggal Dibuat</th>
+              <th>Pegawai</th>
+              <th>Departemen</th>
+              <th>Tujuan</th>
+              <th>Berangkat</th>
+              <th>Status</th>
+              <th>Biaya</th>
               <th>Aksi</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="report in reports" :key="report.id">
-              <td>{{ report.id }}</td>
+            <tr v-if="loading && reportTrips.length === 0">
+              <td colspan="8" class="table-state">Memuat laporan...</td>
+            </tr>
+            <tr v-else-if="reportTrips.length === 0">
+              <td colspan="8" class="table-state">Belum ada perjalanan pada periode ini.</td>
+            </tr>
+            <tr v-for="(trip, index) in reportTrips" :key="trip.id">
+              <td>{{ index + 1 }}</td>
               <td>
-                <strong>{{ report.name }}</strong>
+                <strong>{{ trip.user?.name || '—' }}</strong>
               </td>
-              <td>{{ report.period }}</td>
-              <td>{{ report.date }}</td>
+              <td>{{ trip.user?.department || '—' }}</td>
+              <td>{{ trip.tujuan }}</td>
+              <td>{{ formatDate(trip.tanggal_berangkat) }}</td>
+              <td>
+                <span class="status-badge" :class="tripStatusClass(trip.status)">
+                  {{ tripStatusLabel(trip.status) }}
+                </span>
+              </td>
+              <td>{{ formatCurrency(trip.total_biaya) }}</td>
               <td>
                 <div class="table-actions">
-                  <button title="Download" @click="downloadReport(report)">↓</button>
-                  <button title="Lihat" @click="viewReport(report)">◉</button>
+                  <NuxtLink :to="`/hrd/detail-perjalanan/${trip.id}`" title="Lihat">◉</NuxtLink>
                 </div>
               </td>
             </tr>
@@ -122,71 +160,158 @@
 
       <!-- Mobile cards -->
       <div class="report-cards">
-        <article v-for="report in reports" :key="`card-${report.id}`" class="report-card">
+        <article v-for="(trip, index) in reportTrips" :key="`card-${trip.id}`" class="report-card">
           <div class="report-card-header">
-            <span class="report-card-number">Laporan #{{ report.id }}</span>
-            <span class="report-card-period">{{ report.period }}</span>
+            <span class="report-card-number">Perjalanan #{{ index + 1 }}</span>
+            <span class="status-badge" :class="tripStatusClass(trip.status)">
+              {{ tripStatusLabel(trip.status) }}
+            </span>
           </div>
 
-          <h3 class="report-card-title">{{ report.name }}</h3>
+          <h3 class="report-card-title">{{ trip.tujuan }}</h3>
 
           <dl class="report-card-details">
             <div>
-              <dt>Periode</dt>
-              <dd>{{ report.period }}</dd>
+              <dt>Pegawai</dt>
+              <dd>{{ trip.user?.name || '—' }}</dd>
             </div>
 
             <div>
-              <dt>Tanggal Dibuat</dt>
-              <dd>{{ report.date }}</dd>
+              <dt>Departemen</dt>
+              <dd>{{ trip.user?.department || '—' }}</dd>
+            </div>
+
+            <div>
+              <dt>Berangkat</dt>
+              <dd>{{ formatDate(trip.tanggal_berangkat) }}</dd>
+            </div>
+
+            <div>
+              <dt>Biaya</dt>
+              <dd>{{ formatCurrency(trip.total_biaya) }}</dd>
             </div>
           </dl>
 
           <div class="report-card-actions">
-            <button type="button" @click="downloadReport(report)">↓ Download</button>
-            <button type="button" @click="viewReport(report)">◉ Lihat</button>
+            <NuxtLink :to="`/hrd/detail-perjalanan/${trip.id}`">◉ Detail</NuxtLink>
           </div>
         </article>
+        <p v-if="reportTrips.length === 0" class="empty-state">Belum ada perjalanan pada periode ini.</p>
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useTrips } from '~/composables/useTrips'
+import { useReports } from '~/composables/useReports'
+import { apiErrorMessage } from '~/composables/useApi'
+import { formatCurrency, formatDate, tripStatusClass, tripStatusLabel } from '~/utils/format'
 
-const selectedYear = ref('2026')
-const selectedDepartment = ref('Semua')
+const currentYear = new Date().getFullYear()
 
-const reports = ref([
-  { id: 1, name: 'Laporan Perjalanan Q1 2026', period: 'Jan - Mar 2026', date: '10 Apr 2026' },
-  { id: 2, name: 'Evaluasi Pegawai Perjalanan', period: 'Tahunan 2026', date: '15 Mei 2026' },
-  { id: 3, name: 'Rekap Absensi Perjalanan Mei', period: 'Mei 2026', date: '01 Jun 2026' },
-  { id: 4, name: 'Distribusi Perjalanan per Departemen', period: 'Q2 2026', date: '01 Jun 2026' },
-])
+const selectedYear = ref(String(currentYear))
+const selectedDepartment = ref('')
+const exporting = ref(false)
+const exportError = ref('')
 
-const monthlyData = ref([
-  { month: 'Jan', count: 15, percentage: 20 },
-  { month: 'Feb', count: 18, percentage: 24 },
-  { month: 'Mar', count: 22, percentage: 29 },
-  { month: 'Apr', count: 25, percentage: 33 },
-  { month: 'Mei', count: 30, percentage: 40 },
-  { month: 'Jun', count: 28, percentage: 37 },
-])
+const { trips, loading, error, fetchTrips } = useTrips()
+const { downloadReport } = useReports()
 
-// Computed values
-const totalTrips = computed(() => 85)
-const activeEmployees = computed(() => 120)
-const tripsThisMonth = computed(() => 25)
-const completedThisMonth = computed(() => 12)
+const yearOptions = computed(() => {
+  const years = new Set<number>([currentYear, currentYear - 1, currentYear - 2])
 
-const downloadReport = (report: { id: number; name: string }) => {
-  console.log('Download:', report)
+  for (const trip of trips.value) {
+    const year = Number(trip.tanggal_berangkat.slice(0, 4))
+    if (!Number.isNaN(year)) years.add(year)
+  }
+
+  return Array.from(years).sort((a, b) => b - a)
+})
+
+const departmentOptions = computed(() => {
+  const values = new Set<string>()
+
+  for (const trip of trips.value) {
+    if (trip.user?.department) values.add(trip.user.department)
+  }
+
+  return Array.from(values).sort((a, b) => a.localeCompare(b))
+})
+
+const reportTrips = computed(() => {
+  if (!selectedDepartment.value) return trips.value
+  return trips.value.filter((trip) => trip.user?.department === selectedDepartment.value)
+})
+
+const totalTrips = computed(() => reportTrips.value.length)
+const totalBiaya = computed(() => reportTrips.value.reduce((sum, trip) => sum + Number(trip.total_biaya || 0), 0))
+
+const tripsThisMonth = computed(() => {
+  const now = new Date()
+  const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  return reportTrips.value.filter((trip) => trip.tanggal_berangkat.startsWith(key)).length
+})
+
+const completedThisMonth = computed(() => {
+  const now = new Date()
+  const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  return reportTrips.value.filter((trip) =>
+    trip.tanggal_berangkat.startsWith(key)
+    && (trip.status === 'selesai' || trip.status === 'lengkap'),
+  ).length
+})
+
+const monthlyData = computed(() => {
+  const counts = new Map<string, number>()
+
+  for (const trip of reportTrips.value) {
+    const month = trip.tanggal_berangkat.slice(0, 7)
+    if (month) counts.set(month, (counts.get(month) ?? 0) + 1)
+  }
+
+  const entries = Array.from(counts.entries()).sort(([a], [b]) => a.localeCompare(b))
+  const max = entries.reduce((highest, [, count]) => Math.max(highest, count), 0)
+
+  return entries.map(([month, count]) => ({
+    month: new Intl.DateTimeFormat('id-ID', { month: 'short' }).format(new Date(`${month}-01`)),
+    count,
+    percentage: max > 0 ? Math.max(8, Math.round((count / max) * 100)) : 0,
+  }))
+})
+
+const queryParams = () => ({
+  dari: `${selectedYear.value}-01-01`,
+  sampai: `${selectedYear.value}-12-31`,
+})
+
+const load = async () => {
+  await fetchTrips({ ...queryParams(), per_page: 100 })
 }
 
-const viewReport = (report: { id: number; name: string }) => {
-  console.log('Lihat laporan:', report)
+const exportReport = async (format: 'pdf' | 'xlsx') => {
+  exportError.value = ''
+  exporting.value = true
+
+  try {
+    await downloadReport('trips', format, queryParams())
+  } catch (err) {
+    exportError.value = apiErrorMessage(err, 'Gagal mengunduh laporan.')
+  } finally {
+    exporting.value = false
+  }
 }
+
+watch(selectedYear, () => {
+  load().catch(() => {})
+})
+
+onMounted(() => {
+  load().catch(() => {})
+})
 </script>
 
 <style scoped>
@@ -272,6 +397,29 @@ const viewReport = (report: { id: number; name: string }) => {
   font-family: inherit; font-size: 9px; outline: none;
 }
 
+.export-button {
+  height: 30px; padding: 0 14px;
+  border: 1px solid var(--primary); border-radius: 6px;
+  background: var(--primary); color: var(--white);
+  font-family: inherit; font-size: 9px; font-weight: 600; cursor: pointer;
+}
+.export-button:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.data-error { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #f4c7c7; border-radius: 8px; background: #fff5f5; color: #b42318; font-size: 11px; }
+.chart-empty { padding: 28px 12px; text-align: center; font-size: 11px; color: #8792a5; }
+.table-state { padding: 22px 12px; text-align: center; font-size: 10px; color: #8792a5; }
+.empty-state { padding: 20px 12px; text-align: center; font-size: 11px; color: #8792a5; }
+
+.bar-value { font-size: 8px; font-weight: 600; color: var(--primary); }
+
+.status-badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 4px; font-size: 8px; font-weight: 600; white-space: nowrap; }
+.status-badge.draft { background: #eef1f7; color: #667085; }
+.status-badge.waiting { background: #fff3df; color: #b45309; }
+.status-badge.approved { background: #e8efff; color: var(--primary); }
+.status-badge.rejected { background: #ffe8e8; color: #ef5350; }
+.status-badge.ongoing { background: #fff3df; color: #b45309; }
+.status-badge.completed { background: #dff7ef; color: #18a77c; }
+
 /* CHART SECTION */
 .expense-card {
   padding: 16px; background: var(--white); border: 1px solid var(--border); border-radius: 10px;
@@ -310,6 +458,7 @@ td strong { display: block; color: var(--text); font-size: 8px; line-height: 1.3
 
 .table-actions button { padding: 0; border: none; background: transparent; color: var(--primary); font-size: 11px; cursor: pointer; }
 .table-actions button:last-child { color: #64748b; }
+.table-actions a { color: var(--primary); font-size: 11px; text-decoration: none; }
 
 /* MOBILE CARDS */
 .report-cards { display: none; }
@@ -330,11 +479,13 @@ td strong { display: block; color: var(--text); font-size: 8px; line-height: 1.3
 
 .report-card-details dd { margin: 0; font-size: 11px; color: var(--text); text-align: right; }
 
-.report-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 10px; border-top: 1px solid #eef1f5; }
+.report-card-actions { display: grid; grid-template-columns: 1fr; gap: 8px; padding-top: 10px; border-top: 1px solid #eef1f5; }
 
 .report-card-actions button { min-height: 40px; border: 1px solid var(--primary); border-radius: 7px; background: #f5f8ff; color: var(--primary); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 
 .report-card-actions button:last-child { background: var(--primary); color: var(--white); }
+
+.report-card-actions a { display: flex; align-items: center; justify-content: center; min-height: 40px; border: 1px solid var(--primary); border-radius: 7px; background: var(--primary); color: var(--white); font-size: 12px; font-weight: 600; text-decoration: none; }
 
 /* RESPONSIVE */
 @media (max-width: 1000px) {

@@ -50,6 +50,12 @@ export const NAV_CONFIG: NavItem[] = [
     roles: ['admin'],
   },
   {
+    label: 'Data Pengguna',
+    icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M17 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+    to: '/admin/data-pengguna',
+    roles: ['admin'],
+  },
+  {
     label: 'Persetujuan',
     icon: 'M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z',
     to: '/admin/persetujuan',
@@ -72,14 +78,12 @@ export const NAV_CONFIG: NavItem[] = [
     icon: 'M21 12V7H5a2 2 0 0 1 0-4h14v4M3 21h18M5 21v-4a2 2 0 0 1 2-2h4',
     to: '/finance/pengeluaran',
     roles: ['finance'],
-    activeRoutes: ['/finance/verifikasi'],
   },
   {
     label: 'Pembayaran',
     icon: 'M12 2a3 3 0 0 0-3 3v7H5a2 2 0 0 0 0 4h12a2 2 0 0 0 0-4h-4V5a3 3 0 0 0-3-3ZM3 3v18h18',
     to: '/finance/pembayaran',
     roles: ['finance'],
-    activeRoutes: ['/finance/detail-pembayaran'],
   },
   {
     label: 'Laporan',
@@ -129,7 +133,7 @@ export const NAV_CONFIG: NavItem[] = [
     label: 'Profil',
     icon: 'M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.37-.31-.6-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98L14.5 2.42C14.47 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.5.42L9.12 5.07c-.61.25-1.18.59-1.69.98l-2.49-1c-.23-.08-.48 0-.6.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.37.31.6.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65c.61-.25 1.18-.58 1.69-.98l2.49 1c.23.08.48 0 .6-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z',
     to: '/admin/pengaturan',
-    roles: ['admin', 'finance', 'hrd', 'pegawai'],
+    roles: ['admin', 'finance', 'hrd', 'pegawai', 'atasan'],
   },
 ]
 
@@ -158,6 +162,7 @@ const ROLE_NAV_ORDER: Record<UserRole, string[]> = {
     'Reimbursement',
     'Laporan',
     'Perjalanan Dinas',
+    'Data Pengguna',
     'Profil',
   ],
   finance: ['Dashboard', 'Pengeluaran', 'Pembayaran', 'Laporan', 'Profil'],
@@ -169,7 +174,7 @@ const ROLE_NAV_ORDER: Record<UserRole, string[]> = {
     'Pengeluaran Perjalanan',
     'Profil',
   ],
-  atasan: ['Dashboard', 'Persetujuan', 'Perjalanan Tim', 'Laporan'],
+  atasan: ['Dashboard', 'Persetujuan', 'Perjalanan Tim', 'Laporan', 'Profil'],
 }
 
 export const getNavForRole = (role: UserRole): NavItem[] => {

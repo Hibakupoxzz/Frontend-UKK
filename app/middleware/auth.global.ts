@@ -48,8 +48,6 @@ function getAllowedRoutesForRole(role: UserRole): string[] {
         '/finance/pengeluaran',
         '/finance/pembayaran',
         '/finance/laporan',
-        '/finance/verifikasi',
-        '/finance/detail-pembayaran',
       ]
     case 'hrd':
       return [

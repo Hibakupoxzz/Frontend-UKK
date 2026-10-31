@@ -1,5 +1,5 @@
 import type { Paginated, Trip } from '~/types/api'
-import { apiErrorMessage } from '~/composables/useApi'
+import { apiErrorMessage, unwrapData } from '~/composables/useApi'
 
 export const useApprovals = () => {
   const { get, post } = useApi()
@@ -27,14 +27,14 @@ export const useApprovals = () => {
     }
   }
 
-  const approve = (id: number | string, catatan?: string) =>
-    post<Trip>(`/trips/${id}/approve`, { catatan: catatan || null })
+  const approve = async (id: number | string, catatan?: string) =>
+    unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/approve`, { catatan: catatan || null }))
 
-  const reject = (id: number | string, catatan: string) =>
-    post<Trip>(`/trips/${id}/reject`, { catatan })
+  const reject = async (id: number | string, catatan: string) =>
+    unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/reject`, { catatan }))
 
-  const complete = (id: number | string) =>
-    post<Trip>(`/trips/${id}/complete`)
+  const complete = async (id: number | string) =>
+    unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/complete`))
 
   return {
     approvals,

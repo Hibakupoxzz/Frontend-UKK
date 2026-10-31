@@ -48,7 +48,7 @@
                 <th>Pegawai</th>
                 <th>Tujuan / Keperluan</th>
                 <th>Tanggal</th>
-                <th>Estimasi Biaya</th>
+                <th>Estimasi / Realisasi</th>
                 <th>Status</th>
                 <th>Aksi</th>
               </tr>
@@ -66,7 +66,7 @@
                 <td>{{ request.employee }}</td>
                 <td>{{ request.destination }}</td>
                 <td>{{ request.date }}</td>
-                <td>{{ request.estimate }}</td>
+                <td>{{ request.estimate }} / {{ request.realization }}</td>
                 <td><span class="status" :class="request.statusClass">{{ request.status }}</span></td>
                 <td><NuxtLink :to="`/atasan/persetujuan/${request.id}`" class="text-link">Detail</NuxtLink></td>
               </tr>
@@ -127,6 +127,7 @@ interface PendingRequest {
   destination: string
   date: string
   estimate: string
+  realization: string
   status: string
   statusClass: string
 }
@@ -161,7 +162,8 @@ const pendingRequests = computed<PendingRequest[]>(() => approvals.value.slice(0
   employee: trip.user?.name ?? '—',
   destination: trip.tujuan,
   date: formatDate(trip.tanggal_berangkat),
-  estimate: formatCurrency(trip.total_biaya),
+  estimate: trip.estimasi_biaya === null ? '—' : formatCurrency(trip.estimasi_biaya),
+  realization: formatCurrency(trip.total_biaya),
   status: tripStatusLabel(trip.status),
   statusClass: tripStatusClass(trip.status),
 })))

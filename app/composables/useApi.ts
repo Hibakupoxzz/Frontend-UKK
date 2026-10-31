@@ -32,6 +32,18 @@ export const apiErrorMessage = (error: unknown, fallback = 'Terjadi kesalahan sa
   return fallback
 }
 
+/**
+ * Laravel wraps single JSON resources in a `data` key. Use this for endpoints
+ * returning one resource, never for paginated collections.
+ */
+export const unwrapData = <T>(response: T | { data: T }): T => {
+  if (response && typeof response === 'object' && 'data' in (response as Record<string, unknown>)) {
+    return (response as { data: T }).data
+  }
+
+  return response as T
+}
+
 export const useApi = () => {
   const config = useRuntimeConfig()
   const apiBase = config.public.apiBase as string
