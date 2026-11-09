@@ -76,6 +76,10 @@ export interface Trip {
   keperluan: string
   status: TripStatus
   status_label: string
+  approval_level: number
+  approval_level_label: string
+  is_archived: boolean
+  verification_code: string | null
   estimasi_biaya: number | null
   total_biaya: number
   selisih_biaya: number | null
@@ -85,6 +89,21 @@ export interface Trip {
   documents?: TripDocument[]
   approvals?: TripApproval[]
   payments?: TripPaymentSummary[]
+  bookings?: TripBookingSummary[]
+}
+
+export interface TripBookingSummary {
+  id: number
+  jenis: string
+  jenis_label: string
+  vendor: string | null
+  vendor_id: number | null
+  vendor_name: string | null
+  kode_booking: string | null
+  tanggal: string
+  harga: number
+  status: BookingStatus
+  status_label: string
 }
 
 export interface Payment {
@@ -138,6 +157,16 @@ export interface ExpenseListResponse {
   total_biaya: number
 }
 
+export interface DashboardActivity {
+  id: string
+  kind: 'approval' | 'trip' | 'payment'
+  title: string
+  detail: string | null
+  at: string | null
+  trip_id: number
+  tone: 'info' | 'success' | 'warning' | 'danger'
+}
+
 export interface DashboardSummary {
   total_perjalanan: number
   per_status: Record<TripStatus, number>
@@ -145,6 +174,7 @@ export interface DashboardSummary {
   total_estimasi: number
   total_selisih: number
   perjalanan_dengan_estimasi: number
+  aktivitas_terbaru: DashboardActivity[]
   terbaru: Trip[]
   menunggu_approval?: number
 }
@@ -160,6 +190,34 @@ export interface ReportTable {
   footer: string
 }
 
+export interface AnalyticsMonth {
+  month: string
+  label: string
+  estimasi: number
+  realisasi: number
+  trips: number
+}
+
+export interface AnalyticsDepartment {
+  department: string
+  estimasi: number
+  realisasi: number
+  trips: number
+}
+
+export interface AnalyticsDestination {
+  tujuan: string
+  trips: number
+  realisasi: number
+}
+
+export interface AnalyticsData {
+  year: number
+  monthly: AnalyticsMonth[]
+  departments: AnalyticsDepartment[]
+  destinations: AnalyticsDestination[]
+}
+
 export interface ApiUser {
   id: number
   name: string
@@ -168,11 +226,14 @@ export interface ApiUser {
   no_hp?: string | null
   jabatan?: string | null
   foto_url?: string | null
+  signature_url?: string | null
   is_active?: boolean
   role: UserRole | null
   roles: UserRole[]
   atasan?: { id: number; name: string } | null
   created_at?: string
+  password_expires_in_days?: number
+  password_expired?: boolean
 }
 
 export interface UpdateProfilePayload {
@@ -213,8 +274,13 @@ export interface TripQuery {
   status?: TripStatus | ''
   tujuan?: string
   user_id?: number | string
+  department?: string
+  tanggal?: string
   dari?: string
   sampai?: string
+  q?: string
+  pegawai?: string
+  arsip?: 'aktif' | 'arsip' | 'semua'
 }
 
 export interface CreateTripPayload {
@@ -224,6 +290,107 @@ export interface CreateTripPayload {
   keperluan: string
   estimasi_biaya?: number | null
   needs?: { jenis: 'transportasi' | 'penginapan'; keterangan?: string | null }[]
+}
+
+export type BookingJenis =
+  | 'tiket_pesawat'
+  | 'tiket_kereta'
+  | 'hotel'
+  | 'transport_lokal'
+  | 'lainnya'
+
+export type BookingStatus = 'dipesan' | 'dikonfirmasi' | 'selesai' | 'dibatalkan'
+
+export interface BookingTrip {
+  id: number
+  tujuan: string
+  status: TripStatus
+  user: { id: number; name: string } | null
+}
+
+export interface Booking {
+  id: number
+  trip_id: number
+  jenis: BookingJenis
+  jenis_label: string
+  vendor: string | null
+  vendor_id: number | null
+  vendor_name: string | null
+  kode_booking: string | null
+  tanggal: string
+  harga: number
+  status: BookingStatus
+  status_label: string
+  catatan: string | null
+  created_at: string
+  trip?: BookingTrip
+}
+
+export interface CreateBookingPayload {
+  jenis: BookingJenis
+  vendor?: string | null
+  vendor_id?: number | null
+  kode_booking?: string | null
+  tanggal: string
+  harga: number
+  catatan?: string | null
+}
+
+export interface UpdateBookingPayload {
+  jenis?: BookingJenis
+  vendor?: string | null
+  vendor_id?: number | null
+  kode_booking?: string | null
+  tanggal?: string
+  harga?: number
+  status?: BookingStatus
+  catatan?: string | null
+}
+
+export interface BookingQuery {
+  page?: number
+  per_page?: number
+  trip_id?: number | string
+  jenis?: BookingJenis | ''
+  status?: BookingStatus | ''
+}
+
+export type VendorJenis = 'maskapai' | 'kereta' | 'hotel' | 'transport' | 'lainnya'
+
+export interface Vendor {
+  id: number
+  nama: string
+  jenis: VendorJenis
+  kontak: string | null
+  kota: string | null
+  harga_acuan: number | null
+  is_active: boolean
+  created_at: string
+}
+
+export interface CreateVendorPayload {
+  nama: string
+  jenis: VendorJenis
+  kontak?: string | null
+  kota?: string | null
+  harga_acuan?: number | null
+  is_active?: boolean
+}
+
+export interface Budget {
+  id: number
+  department: string
+  periode: string
+  pagu: number
+  terpakai: number
+  sisa: number
+  created_at: string
+}
+
+export interface CreateBudgetPayload {
+  department: string
+  periode: string
+  pagu: number
 }
 
 export interface AppNotification {
@@ -252,6 +419,16 @@ export interface NotificationPreferences {
   in_app: boolean
   travel_reminder: boolean
   payment_updates: boolean
+  booking_updates: boolean
+  comment_updates: boolean
+}
+
+export interface TripComment {
+  id: number
+  trip_id: number
+  body: string
+  user: { id: number; name: string } | null
+  created_at: string | null
 }
 
 export interface CreateExpensePayload {

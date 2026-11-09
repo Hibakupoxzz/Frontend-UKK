@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/finance/dashboard">Finance</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Laporan</strong>
     </div>
 
@@ -18,7 +18,7 @@
     <div class="summary-grid">
       <div class="summary-card">
         <div class="summary-icon blue">
-          ✈
+          <AppIcon name="wallet" />
         </div>
         <div>
           <p>Total Pengeluaran</p>
@@ -27,7 +27,7 @@
       </div>
       <div class="summary-card">
         <div class="summary-icon green">
-          ▤
+          <AppIcon name="list" />
         </div>
         <div>
           <p>Jumlah Pengeluaran</p>
@@ -36,7 +36,7 @@
       </div>
       <div class="summary-card">
         <div class="summary-icon cyan">
-          ▤
+          <AppIcon name="hourglass" />
         </div>
         <div>
           <p>Tanpa Bukti</p>
@@ -45,7 +45,7 @@
       </div>
       <div class="summary-card">
         <div class="summary-icon orange">
-          ││
+          <AppIcon name="check-circle" />
         </div>
         <div>
           <p>Dengan Bukti</p>
@@ -66,7 +66,8 @@
         :disabled="exporting || loading"
         @click="exportReport('pdf')"
       >
-        {{ exporting ? 'Menyiapkan...' : '↓ Ekspor PDF' }}
+        <AppIcon name="download" />
+        {{ exporting ? 'Menyiapkan...' : 'Ekspor PDF' }}
       </button>
 
       <button
@@ -75,7 +76,8 @@
         :disabled="exporting || loading"
         @click="exportReport('xlsx')"
       >
-        ↓ Ekspor Excel
+        <AppIcon name="download" />
+        Ekspor Excel
       </button>
     </div>
 
@@ -105,10 +107,44 @@
       </div>
     </section>
 
+    <!-- Budget Section -->
+    <section class="expense-card">
+      <div class="section-header">
+        <h2>Pagu Anggaran per Departemen — Tahun {{ selectedYear }}</h2>
+      </div>
+      <div v-if="budgetsLoading" class="chart-empty">Memuat pagu anggaran...</div>
+      <div v-else-if="budgetsForYear.length === 0" class="chart-empty">
+        Belum ada pagu anggaran pada tahun ini.
+      </div>
+      <div v-else class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Departemen</th>
+              <th>Periode</th>
+              <th>Pagu</th>
+              <th>Terpakai</th>
+              <th>Sisa</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="budget in budgetsForYear" :key="budget.id">
+              <td>{{ budget.department }}</td>
+              <td>{{ formatPeriode(budget.periode) }}</td>
+              <td>{{ formatCurrency(budget.pagu) }}</td>
+              <td>{{ formatCurrency(budget.terpakai) }}</td>
+              <td :class="budget.sisa < 0 ? 'over-budget' : 'under-budget'">
+                {{ formatCurrency(budget.sisa) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- Report Table -->
     <section class="history-card">
       <h2>Rincian Pengeluaran</h2>
-
       <div class="table-wrapper">
         <table>
           <thead>
@@ -191,6 +227,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useReports } from '~/composables/useReports'
+import { useBudgets } from '~/composables/useBudgets'
 import { apiErrorMessage } from '~/composables/useApi'
 import { formatCurrency } from '~/utils/format'
 
@@ -201,6 +238,17 @@ const exporting = ref(false)
 const exportError = ref('')
 
 const { expenseReport, loading, error, fetchExpenseReport, downloadReport } = useReports()
+const { budgets, loading: budgetsLoading, fetchBudgets } = useBudgets()
+
+const budgetsForYear = computed(() =>
+  budgets.value.filter((budget) => budget.periode.startsWith(selectedYear.value)),
+)
+
+const formatPeriode = (value: string) => {
+  const date = new Date(`${value}-01`)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(date)
+}
 
 const yearOptions = computed(() => {
   const years = new Set<number>([currentYear, currentYear - 1, currentYear - 2])
@@ -280,6 +328,7 @@ watch(selectedYear, () => {
 
 onMounted(() => {
   load().catch(() => {})
+  fetchBudgets().catch(() => {})
 })
 </script>
 
@@ -378,6 +427,7 @@ onMounted(() => {
 
 .export-button:hover { opacity: 0.9; }
 .export-button:disabled { cursor: not-allowed; opacity: 0.6; }
+.export-button svg { width: 13px; height: 13px; }
 
 .data-error { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #f4c7c7; border-radius: 8px; background: #fff5f5; color: #b42318; font-size: 11px; }
 .chart-empty { padding: 28px 12px; text-align: center; font-size: 11px; color: #8792a5; }
@@ -426,6 +476,8 @@ th { padding: 8px; text-align: left; font-size: 8px; font-weight: 600; color: #7
 td { padding: 11px 8px; border-bottom: 1px solid #e5e8ee; font-size: 8px; color: #718096; vertical-align: middle; }
 tbody tr:last-child td { border-bottom: none; }
 td strong { display: block; color: var(--text); font-size: 8px; line-height: 1.3; }
+td.over-budget { color: #b42318; font-weight: 600; }
+td.under-budget { color: #15803d; font-weight: 600; }
 
 /* TABLE ACTIONS */
 .table-actions { display: flex; align-items: center; justify-content: center; gap: 8px; }

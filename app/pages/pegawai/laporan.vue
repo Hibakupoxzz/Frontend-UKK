@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/pegawai/dashboard">Pegawai</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Laporan Saya</strong>
     </div>
 
@@ -28,21 +28,21 @@
     <!-- Summary -->
     <div class="summary">
       <div class="summary-item">
-        <div class="summary-icon cyan">▤</div>
+        <div class="summary-icon cyan"><AppIcon name="route" /></div>
         <div>
           <p>Total Perjalanan</p>
           <h2>{{ totalTrips }}</h2>
         </div>
       </div>
       <div class="summary-item">
-        <div class="summary-icon green">▤</div>
+        <div class="summary-icon green"><AppIcon name="wallet" /></div>
         <div>
           <p>Total Pengeluaran</p>
           <h2>{{ formatCurrency(totalExpense) }}</h2>
         </div>
       </div>
       <div class="summary-item">
-        <div class="summary-icon blue">✈</div>
+        <div class="summary-icon blue"><AppIcon name="check-circle" /></div>
         <div>
           <p>Status Akhir</p>
           <h2>{{ statusText }}</h2>
@@ -118,6 +118,48 @@
       </div>
     </section>
 
+    <!-- My Bookings -->
+    <section class="trip-history-card">
+      <div class="section-header">
+        <h2>Pemesanan Saya</h2>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th class="no-column">No</th>
+              <th>Perjalanan</th>
+              <th>Jenis</th>
+              <th>Vendor / Kode</th>
+              <th>Tanggal</th>
+              <th>Harga</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="bookingsLoading && myBookings.length === 0">
+              <td colspan="7" class="table-state">Memuat pemesanan...</td>
+            </tr>
+            <tr v-else-if="myBookings.length === 0">
+              <td colspan="7" class="table-state">Belum ada pemesanan tiket atau penginapan.</td>
+            </tr>
+            <tr v-for="(booking, index) in myBookings" :key="booking.id">
+              <td>{{ index + 1 }}</td>
+              <td>{{ booking.trip?.tujuan ?? '—' }}</td>
+              <td>{{ booking.jenis_label }}</td>
+              <td>
+                {{ booking.vendor_name ?? booking.vendor ?? '—' }}
+                <span v-if="booking.kode_booking" class="booking-code">{{ booking.kode_booking }}</span>
+              </td>
+              <td>{{ formatDate(booking.tanggal) }}</td>
+              <td>{{ formatCurrency(booking.harga) }}</td>
+              <td><span class="status-badge" :class="bookingStatusClass(booking.status)">{{ booking.status_label }}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- Expense Summary -->
     <section class="expense-summary-card">
       <div class="section-header">
@@ -125,14 +167,14 @@
       </div>
       <div class="summary" style="grid-template-columns: repeat(2, 1fr); gap: 10px;">
         <div class="summary-item">
-          <div class="summary-icon orange">⏳</div>
+          <div class="summary-icon orange"><AppIcon name="hourglass" /></div>
           <div>
             <p>Tanpa Bukti</p>
             <h2>{{ formatCurrency(unverifiedExpense) }}</h2>
           </div>
         </div>
         <div class="summary-item">
-          <div class="summary-icon green">✅</div>
+          <div class="summary-icon green"><AppIcon name="check-circle" /></div>
           <div>
             <p>Dengan Bukti</p>
             <h2>{{ formatCurrency(verifiedExpense) }}</h2>
@@ -145,18 +187,21 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import type { BookingStatus } from '~/types/api'
 import { useReports } from '~/composables/useReports'
 import { useDashboard } from '~/composables/useDashboard'
+import { useBookings } from '~/composables/useBookings'
 import { apiErrorMessage } from '~/composables/useApi'
-import { formatCurrency } from '~/utils/format'
+import { formatCurrency, formatDate } from '~/utils/format'
 
 const { tripReport, expenseReport, loading: reportsLoading, error: reportsError, fetchTripReport, fetchExpenseReport, downloadReport } = useReports()
 const { summary, loading: dashboardLoading, error: dashboardError, fetchDashboard } = useDashboard()
+const { bookings: myBookings, loading: bookingsLoading, fetchBookings } = useBookings()
 
 const exporting = ref(false)
 const exportError = ref('')
 
-const loading = computed(() => reportsLoading.value || dashboardLoading.value)
+const loading = computed(() => reportsLoading.value || dashboardLoading.value || bookingsLoading.value)
 const error = computed(() => reportsError.value ?? dashboardError.value ?? '')
 
 const asText = (value: string | number | null | undefined) => (value === null || value === undefined ? '—' : String(value))
@@ -198,6 +243,19 @@ const statusText = computed(() => {
   return `${completed} perjalanan selesai`
 })
 
+const bookingStatusClass = (status: BookingStatus) => {
+  switch (status) {
+    case 'dikonfirmasi':
+      return 'approved'
+    case 'selesai':
+      return 'completed'
+    case 'dibatalkan':
+      return 'rejected'
+    default:
+      return 'waiting'
+  }
+}
+
 const handleExport = async (format: 'pdf' | 'xlsx') => {
   exportError.value = ''
   exporting.value = true
@@ -216,6 +274,7 @@ onMounted(() => {
     fetchTripReport(),
     fetchExpenseReport(),
     fetchDashboard(),
+    fetchBookings({ per_page: 100 }),
   ]).catch(() => {})
 })
 </script>
@@ -248,6 +307,7 @@ onMounted(() => {
 .summary-icon.cyan { background: #e5f7fc; color: #0891b2; }
 .summary-icon.green { background: #e3f8ef; color: #16a34a; }
 .summary-icon.blue { background: #e9f0ff; color: var(--primary); }
+.summary-icon.orange { background: #fff3df; color: #f59e0b; }
 .summary-item > div:last-child { min-width: 0; }
 .summary-item p { margin: 0 0 3px; font-size: 9px; color: #7b8799; }
 .summary-item h2 { margin: 0; font-size: 15px; line-height: 1.1; color: var(--text); font-weight: 700; }
@@ -267,6 +327,7 @@ onMounted(() => {
 
 .status-badge { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 5px; font-size: 9px; font-weight: 600; white-space: nowrap; }
 .status-badge.draft { background: #eef1f7; color: #667085; }
+.booking-code { display: block; margin-top: 2px; font-size: 9px; color: #8792a5; }
 .status-badge.waiting { background: #fff3df; color: #ef9b16; }
 .status-badge.approved { background: #dff7ef; color: #18a77c; }
 .status-badge.rejected { background: #ffe8e8; color: #ef5350; }

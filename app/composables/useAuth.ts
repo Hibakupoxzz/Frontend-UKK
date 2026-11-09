@@ -11,7 +11,10 @@ export interface User {
   no_hp?: string
   jabatan?: string
   foto_url?: string
+  signature_url?: string
   is_active?: boolean
+  password_expires_in_days?: number
+  password_expired?: boolean
 }
 
 interface ApiUser {
@@ -22,9 +25,12 @@ interface ApiUser {
   no_hp?: string | null
   jabatan?: string | null
   foto_url?: string | null
+  signature_url?: string | null
   is_active?: boolean
   role?: string | null
   roles?: string[] | null
+  password_expires_in_days?: number | null
+  password_expired?: boolean | null
 }
 
 interface LoginResponse {
@@ -64,7 +70,10 @@ const toUser = (payload: ApiUser): User => {
     no_hp: payload.no_hp ?? undefined,
     jabatan: payload.jabatan ?? undefined,
     foto_url: payload.foto_url ?? undefined,
+    signature_url: payload.signature_url ?? undefined,
     is_active: payload.is_active,
+    password_expires_in_days: payload.password_expires_in_days ?? undefined,
+    password_expired: payload.password_expired ?? undefined,
   }
 }
 

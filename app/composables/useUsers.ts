@@ -44,6 +44,12 @@ export const useUsers = () => {
 
   const deleteUser = (id: number | string) => remove<{ message: string }>(`/users/${id}`)
 
+  const resetPassword = (id: number | string, password: string, passwordConfirmation: string) =>
+    post<{ message: string }>(`/users/${id}/reset-password`, {
+      password,
+      password_confirmation: passwordConfirmation,
+    })
+
   return {
     users,
     meta,
@@ -54,5 +60,6 @@ export const useUsers = () => {
     createUser,
     updateUser,
     deleteUser,
+    resetPassword,
   }
 }

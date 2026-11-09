@@ -101,6 +101,49 @@ export const useProfile = () => {
     }
   }
 
+  const uploadSignature = async (file: File) => {
+    loading.value = true
+    error.value = null
+
+    try {
+      const form = new FormData()
+      form.append('tanda_tangan', file)
+
+      const result = unwrapData(await request<ApiUser | { data: ApiUser }>('/me/tanda-tangan', {
+        method: 'POST',
+        body: form,
+      }))
+
+      if (result.signature_url !== undefined) {
+        setUser({ signature_url: result.signature_url ?? undefined })
+      }
+
+      return result
+    } catch (err) {
+      error.value = apiErrorMessage(err, 'Gagal mengunggah tanda tangan.')
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const deleteSignature = async () => {
+    loading.value = true
+    error.value = null
+
+    try {
+      const result = unwrapData(await remove<ApiUser | { data: ApiUser }>('/me/tanda-tangan'))
+      setUser({ signature_url: undefined })
+
+      return result
+    } catch (err) {
+      error.value = apiErrorMessage(err, 'Gagal menghapus tanda tangan.')
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
@@ -109,5 +152,7 @@ export const useProfile = () => {
     updatePassword,
     uploadPhoto,
     deletePhoto,
+    uploadSignature,
+    deleteSignature,
   }
 }

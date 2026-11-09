@@ -6,6 +6,8 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   in_app: true,
   travel_reminder: true,
   payment_updates: true,
+  booking_updates: true,
+  comment_updates: true,
 }
 
 export const useNotificationPreferences = () => {

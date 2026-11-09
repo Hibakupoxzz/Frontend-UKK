@@ -18,8 +18,13 @@ export const useTrips = () => {
         ...params,
         status: params.status || undefined,
         tujuan: params.tujuan || undefined,
+        department: params.department || undefined,
+        tanggal: params.tanggal || undefined,
         dari: params.dari || undefined,
         sampai: params.sampai || undefined,
+        q: params.q || undefined,
+        pegawai: params.pegawai || undefined,
+        arsip: params.arsip || undefined,
       })
 
       trips.value = response.data
@@ -56,6 +61,17 @@ export const useTrips = () => {
 
   const deleteTrip = (id: number | string) => remove<{ message: string }>(`/trips/${id}`)
 
+  const archiveTrip = async (id: number | string) =>
+    unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/archive`))
+
+  const unarchiveTrip = async (id: number | string) =>
+    unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/unarchive`))
+
+  const duplicateTrip = async (
+    id: number | string,
+    payload: { tanggal_berangkat: string; tanggal_pulang: string },
+  ) => unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/duplicate`, payload))
+
   const submitTrip = async (id: number | string) =>
     unwrapData(await post<Trip | { data: Trip }>(`/trips/${id}/submit`))
 
@@ -79,6 +95,36 @@ export const useTrips = () => {
   const deleteDocument = (documentId: number | string) =>
     remove<{ message: string }>(`/documents/${documentId}`)
 
+  const downloadDocument = async (id: number | string, kind: 'spt' | 'spd') => {
+    const blob = await request<Blob>(`/trips/${id}/documents/${kind}`, {
+      responseType: 'blob',
+    })
+
+    if (!import.meta.client) return
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${kind.toUpperCase()}-TRV-${id}.pdf`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const downloadCalendar = async (id: number | string) => {
+    const blob = await request<Blob>(`/trips/${id}/calendar.ics`, {
+      responseType: 'blob',
+    })
+
+    if (!import.meta.client) return
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `TRV-${id}.ics`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   return {
     trips,
     meta,
@@ -89,10 +135,15 @@ export const useTrips = () => {
     createTrip,
     updateTrip,
     deleteTrip,
+    archiveTrip,
+    unarchiveTrip,
+    duplicateTrip,
     submitTrip,
     startTrip,
     finishTrip,
     uploadDocument,
     deleteDocument,
+    downloadDocument,
+    downloadCalendar,
   }
 }

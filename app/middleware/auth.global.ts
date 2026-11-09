@@ -22,6 +22,11 @@ export default defineNuxtRouteMiddleware((to) => {
   }
 
   if (isAuthenticated.value && user.value) {
+    // Password kedaluwarsa: kunci navigasi ke pengaturan sampai diganti.
+    if (user.value.password_expired && to.path !== '/admin/pengaturan') {
+      return navigateTo('/admin/pengaturan')
+    }
+
     const userRole = user.value.role
     const allowedRoutes = getAllowedRoutesForRole(userRole)
 
@@ -55,6 +60,7 @@ function getAllowedRoutesForRole(role: UserRole): string[] {
         '/hrd/dashboard',
         '/hrd/data-pegawai',
         '/hrd/pelaksanaan',
+        '/hrd/persetujuan',
         '/hrd/laporan',
         '/hrd/detail-perjalanan',
         '/hrd/pegawai-detail',

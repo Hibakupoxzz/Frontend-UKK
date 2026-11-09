@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/pegawai/dashboard">Pegawai</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Pengeluaran Perjalanan</strong>
     </div>
 
@@ -64,21 +64,21 @@
     <!-- Summary -->
     <div class="summary">
       <div class="summary-item">
-        <div class="summary-icon blue">💰</div>
+        <div class="summary-icon blue"><AppIcon name="wallet" /></div>
         <div>
           <p>Total Pengeluaran</p>
           <h2>{{ formatCurrency(totalExpense) }}</h2>
         </div>
       </div>
       <div class="summary-item">
-        <div class="summary-icon orange">⏳</div>
+        <div class="summary-icon orange"><AppIcon name="hourglass" /></div>
         <div>
           <p>Tanpa Bukti</p>
           <h2>{{ formatCurrency(unverified) }}</h2>
         </div>
       </div>
       <div class="summary-item">
-        <div class="summary-icon green">✅</div>
+        <div class="summary-icon green"><AppIcon name="check-circle" /></div>
         <div>
           <p>Dengan Bukti</p>
           <h2>{{ formatCurrency(verified) }}</h2>
@@ -116,6 +116,170 @@
       </span>
     </section>
 
+    <!-- Pemesanan Tiket & Penginapan -->
+    <section v-if="selectedTrip" class="booking-card">
+      <div class="booking-header">
+        <div>
+          <h2>Pemesanan Tiket &amp; Penginapan</h2>
+          <p>Ajukan pemesanan untuk perjalanan ini. Admin akan mengonfirmasi dan memberi kode booking.</p>
+        </div>
+        <button class="add-button" type="button" @click="toggleBookingForm">
+          {{ showBookingForm ? 'Tutup Form' : '+ Ajukan Pemesanan' }}
+        </button>
+      </div>
+
+      <p v-if="bookingError" class="data-error" role="alert">{{ bookingError }}</p>
+      <p v-if="bookingMessage" class="data-success" role="status">{{ bookingMessage }}</p>
+
+      <div v-if="showBookingForm" class="booking-form">
+        <div class="form-grid">
+          <div class="filter-group">
+            <label>Jenis Pemesanan</label>
+            <select v-model="bookingForm.jenis" :disabled="bookingSubmitting">
+              <option value="tiket_pesawat">Tiket Pesawat</option>
+              <option value="tiket_kereta">Tiket Kereta</option>
+              <option value="hotel">Hotel / Penginapan</option>
+              <option value="transport_lokal">Transport Lokal</option>
+              <option value="lainnya">Lainnya</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Tanggal Layanan</label>
+            <input
+              v-model="bookingForm.tanggal"
+              type="date"
+              :min="selectedTrip.tanggal_berangkat"
+              :max="selectedTrip.tanggal_pulang"
+              :disabled="bookingSubmitting"
+            />
+          </div>
+          <div class="filter-group">
+            <label>Vendor (Direktori)</label>
+            <select v-model="bookingForm.vendor_id" :disabled="bookingSubmitting">
+              <option :value="null">— Pilih / isi manual —</option>
+              <option v-for="vendor in vendors" :key="vendor.id" :value="vendor.id">
+                {{ vendor.nama }}
+              </option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Vendor Manual</label>
+            <input
+              v-model="bookingForm.vendor"
+              type="text"
+              placeholder="Isi bila tidak ada di direktori"
+              :disabled="bookingSubmitting || bookingForm.vendor_id !== null"
+            />
+          </div>
+          <div class="filter-group">
+            <label>Harga (Rp)</label>
+            <input v-model.number="bookingForm.harga" type="number" min="0" step="1000" placeholder="0" :disabled="bookingSubmitting" />
+          </div>
+          <div class="filter-group full">
+            <label>Catatan</label>
+            <input v-model="bookingForm.catatan" type="text" placeholder="Contoh: butuh bagasi 20kg (opsional)" :disabled="bookingSubmitting" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="cancel-button" type="button" :disabled="bookingSubmitting" @click="showBookingForm = false">Batal</button>
+          <button class="submit-button" type="button" :disabled="bookingSubmitting || !selectedTripId" @click="handleBookingCreate">
+            {{ bookingSubmitting ? 'Menyimpan...' : (editingBookingId !== null ? 'Simpan Perubahan' : 'Kirim Pengajuan') }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="bookingsLoading" class="table-state">Memuat pemesanan...</div>
+      <p v-else-if="tripBookings.length === 0" class="empty-text">Belum ada pemesanan untuk perjalanan ini.</p>
+      <ul v-else class="booking-list">
+        <li v-for="booking in tripBookings" :key="booking.id" class="booking-item">
+          <div class="booking-info">
+            <strong>{{ booking.jenis_label }}</strong>
+            <span>{{ booking.vendor_name || '—' }}{{ booking.kode_booking ? ` · ${booking.kode_booking}` : '' }}</span>
+            <span>{{ formatDate(booking.tanggal) }} · {{ formatCurrency(booking.harga) }}</span>
+          </div>
+          <span class="status-badge" :class="`book-${booking.status}`">{{ booking.status_label }}</span>
+          <button
+            v-if="booking.status === 'dipesan' || booking.status === 'dikonfirmasi'"
+            type="button"
+            class="text-button"
+            :disabled="bookingSubmitting"
+            @click="openBookingEdit(booking)"
+          >
+            Ubah
+          </button>
+          <button
+            v-if="booking.status === 'dipesan'"
+            type="button"
+            class="text-danger"
+            :disabled="cancellingBookingId === booking.id"
+            @click="handleBookingCancel(booking.id)"
+          >
+            Batalkan
+          </button>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Ajukan Lagi -->
+    <section v-if="selectedTrip" class="booking-card">
+      <div class="booking-header">
+        <div>
+          <h2>Ajukan Lagi Perjalanan Ini</h2>
+          <p>Salin tujuan, keperluan, estimasi, dan kebutuhan sebagai draft baru. Pengeluaran tidak ikut disalin.</p>
+        </div>
+        <button class="add-button" type="button" @click="showDuplicateForm = !showDuplicateForm">
+          {{ showDuplicateForm ? 'Tutup Form' : 'Ajukan Lagi' }}
+        </button>
+      </div>
+
+      <p v-if="duplicateError" class="data-error" role="alert">{{ duplicateError }}</p>
+      <p v-if="duplicateMessage" class="data-success" role="status">{{ duplicateMessage }}</p>
+
+      <div v-if="showDuplicateForm" class="booking-form">
+        <div class="form-grid">
+          <div class="filter-group">
+            <label>Tanggal Berangkat Baru</label>
+            <input v-model="duplicateForm.tanggal_berangkat" type="date" :min="today()" :disabled="duplicating" />
+          </div>
+          <div class="filter-group">
+            <label>Tanggal Kembali Baru</label>
+            <input v-model="duplicateForm.tanggal_pulang" type="date" :min="duplicateForm.tanggal_berangkat || today()" :disabled="duplicating" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="cancel-button" type="button" :disabled="duplicating" @click="showDuplicateForm = false">Batal</button>
+          <button class="submit-button" type="button" :disabled="duplicating || !selectedTripId" @click="handleDuplicate">
+            {{ duplicating ? 'Menyalin...' : 'Buat Draft Salinan' }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dokumen Resmi -->
+    <section v-if="selectedTrip && canPrintDocs" class="booking-card">
+      <div class="booking-header">
+        <div>
+          <h2>Dokumen Resmi</h2>
+          <p>Unduh Surat Perintah Tugas dan Surat Perjalanan Dinas perjalanan ini.</p>
+        </div>
+        <div class="doc-actions">
+          <button type="button" class="add-button" :disabled="printingDoc" @click="printDoc('spt')">
+            {{ printingDoc ? '...' : 'Cetak SPT' }}
+          </button>
+          <button type="button" class="add-button" :disabled="printingDoc" @click="printDoc('spd')">
+            {{ printingDoc ? '...' : 'Cetak SPD' }}
+          </button>
+          <button type="button" class="add-button outline" :disabled="printingDoc" @click="saveCalendar">
+            {{ printingDoc ? '...' : 'Kalender' }}
+          </button>
+        </div>
+      </div>
+      <p v-if="docError" class="data-error" role="alert">{{ docError }}</p>
+    </section>
+
+    <!-- Diskusi -->
+    <TripComments v-if="selectedTripId" :trip-id="selectedTripId" />
+
     <!-- Filter Card -->
     <div class="filter-card">
       <div class="filter-group trip-group">
@@ -131,7 +295,7 @@
       <div class="filter-group search-group">
         <label>Cari Kategori / Keterangan</label>
         <div class="search-input">
-          <svg viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 0 4.08 11.56l4.43 4.43 1.41-1.41-4.43-4.43A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
+          <AppIcon name="search" />
           <input v-model="search" type="text" placeholder="Cari..." />
         </div>
       </div>
@@ -308,14 +472,16 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import type { ExpenseType, Payment } from '~/types/api'
+import type { Booking, BookingJenis, ExpenseType, Payment } from '~/types/api'
 import { useTrips } from '~/composables/useTrips'
+import { useBookings } from '~/composables/useBookings'
+import { useVendors } from '~/composables/useVendors'
 import { useExpenses } from '~/composables/useExpenses'
 import { usePayments } from '~/composables/usePayments'
 import { apiErrorMessage } from '~/composables/useApi'
 import { expenseTypeLabel, formatCurrency, formatDate, tripStatusLabel } from '~/utils/format'
 
-const { trips, loading: tripsLoading, error: tripsError, fetchTrips } = useTrips()
+const { trips, loading: tripsLoading, error: tripsError, fetchTrips, duplicateTrip, downloadDocument, downloadCalendar } = useTrips()
 const {
   expenses,
   totalBiaya,
@@ -328,6 +494,17 @@ const {
 } = useExpenses()
 
 const { payments: tripPayments, fetchPayments, requestPayment } = usePayments()
+
+const {
+  bookings: tripBookings,
+  loading: bookingsLoading,
+  fetchBookings,
+  createBooking,
+  updateBooking,
+  deleteBooking,
+} = useBookings()
+
+const { vendors, fetchVendors } = useVendors()
 
 const search = ref('')
 const selectedCategory = ref('')
@@ -346,6 +523,69 @@ const receiptMessage = ref('')
 const requestingPayment = ref(false)
 const paymentError = ref('')
 const paymentMessage = ref('')
+
+const showBookingForm = ref(false)
+const bookingSubmitting = ref(false)
+const bookingError = ref('')
+const bookingMessage = ref('')
+const cancellingBookingId = ref<number | null>(null)
+const editingBookingId = ref<number | null>(null)
+
+const showDuplicateForm = ref(false)
+const duplicating = ref(false)
+const duplicateError = ref('')
+const duplicateMessage = ref('')
+
+const duplicateForm = reactive({
+  tanggal_berangkat: '',
+  tanggal_pulang: '',
+})
+
+const printingDoc = ref(false)
+const docError = ref('')
+
+const canPrintDocs = computed(() =>
+  !!selectedTrip.value && ['disetujui', 'berjalan', 'selesai', 'lengkap'].includes(selectedTrip.value.status),
+)
+
+const printDoc = async (kind: 'spt' | 'spd') => {
+  if (!selectedTripId.value || printingDoc.value) return
+
+  printingDoc.value = true
+  docError.value = ''
+
+  try {
+    await downloadDocument(selectedTripId.value, kind)
+  } catch (err) {
+    docError.value = apiErrorMessage(err, 'Gagal mengunduh dokumen.')
+  } finally {
+    printingDoc.value = false
+  }
+}
+
+const saveCalendar = async () => {
+  if (!selectedTripId.value || printingDoc.value) return
+
+  printingDoc.value = true
+  docError.value = ''
+
+  try {
+    await downloadCalendar(selectedTripId.value)
+  } catch (err) {
+    docError.value = apiErrorMessage(err, 'Gagal mengunduh kalender.')
+  } finally {
+    printingDoc.value = false
+  }
+}
+
+const bookingForm = reactive({
+  jenis: 'tiket_pesawat' as BookingJenis,
+  tanggal: '',
+  vendor_id: null as number | null,
+  vendor: '',
+  harga: '' as number | '',
+  catatan: '',
+})
 
 const today = () => {
   const date = new Date()
@@ -542,13 +782,189 @@ const handleReceiptDelete = async (expenseId: number, receiptId: number) => {
   }
 }
 
+const bookingStatusNote = computed(() => {
+  if (!selectedTrip.value) return ''
+  return `Tanggal layanan harus dalam rentang ${formatDate(selectedTrip.value.tanggal_berangkat)} – ${formatDate(selectedTrip.value.tanggal_pulang)}.`
+})
+
+const loadBookings = async () => {
+  if (!selectedTripId.value) {
+    tripBookings.value = []
+    return
+  }
+
+  try {
+    await fetchBookings({ trip_id: selectedTripId.value, per_page: 100 })
+  } catch {
+    // pesan error sudah disimpan oleh composable
+  }
+}
+
+const toggleBookingForm = () => {
+  bookingError.value = ''
+  bookingMessage.value = ''
+  editingBookingId.value = null
+  bookingForm.vendor_id = null
+  showBookingForm.value = !showBookingForm.value
+
+  if (showBookingForm.value && !bookingForm.tanggal && selectedTrip.value) {
+    bookingForm.tanggal = selectedTrip.value.tanggal_berangkat
+  }
+}
+
+const openBookingEdit = (booking: Booking) => {
+  bookingError.value = ''
+  bookingMessage.value = ''
+  editingBookingId.value = booking.id
+  bookingForm.jenis = booking.jenis
+  bookingForm.tanggal = booking.tanggal
+  bookingForm.vendor_id = booking.vendor_id
+  bookingForm.vendor = booking.vendor ?? ''
+  bookingForm.harga = Number(booking.harga)
+  bookingForm.catatan = booking.catatan ?? ''
+  showBookingForm.value = true
+}
+
+const handleBookingCreate = async () => {
+  bookingError.value = ''
+  bookingMessage.value = ''
+
+  if (!selectedTripId.value || !selectedTrip.value) {
+    bookingError.value = 'Pilih perjalanan terlebih dahulu.'
+    return
+  }
+
+  const harga = Number(bookingForm.harga)
+
+  if (!bookingForm.tanggal) {
+    bookingError.value = 'Tanggal layanan wajib diisi.'
+    return
+  }
+
+  if (
+    bookingForm.tanggal < selectedTrip.value.tanggal_berangkat
+    || bookingForm.tanggal > selectedTrip.value.tanggal_pulang
+  ) {
+    bookingError.value = bookingStatusNote.value
+    return
+  }
+
+  if (!Number.isFinite(harga) || harga < 0) {
+    bookingError.value = 'Harga wajib diisi dengan benar.'
+    return
+  }
+
+  bookingSubmitting.value = true
+
+  try {
+    if (editingBookingId.value !== null) {
+      await updateBooking(editingBookingId.value, {
+        jenis: bookingForm.jenis,
+        tanggal: bookingForm.tanggal,
+        vendor_id: bookingForm.vendor_id,
+        vendor: bookingForm.vendor_id !== null ? null : (bookingForm.vendor.trim() || null),
+        harga,
+        catatan: bookingForm.catatan.trim() || null,
+      })
+      bookingMessage.value = 'Pemesanan berhasil diubah.'
+    } else {
+      await createBooking(selectedTripId.value, {
+        jenis: bookingForm.jenis,
+        tanggal: bookingForm.tanggal,
+        vendor_id: bookingForm.vendor_id,
+        vendor: bookingForm.vendor_id !== null ? null : (bookingForm.vendor.trim() || null),
+        harga,
+        catatan: bookingForm.catatan.trim() || null,
+      })
+      bookingMessage.value = 'Pengajuan pemesanan terkirim. Admin akan mengonfirmasi.'
+    }
+
+    bookingForm.vendor_id = null
+    bookingForm.vendor = ''
+    bookingForm.harga = ''
+    bookingForm.catatan = ''
+    editingBookingId.value = null
+    showBookingForm.value = false
+    await loadBookings()
+  } catch (err) {
+    bookingError.value = apiErrorMessage(err, 'Gagal menyimpan pemesanan.')
+  } finally {
+    bookingSubmitting.value = false
+  }
+}
+
+const handleBookingCancel = async (id: number) => {
+  if (!window.confirm('Batalkan pemesanan ini?')) return
+
+  bookingError.value = ''
+  bookingMessage.value = ''
+  cancellingBookingId.value = id
+
+  try {
+    await deleteBooking(id)
+    bookingMessage.value = 'Pemesanan dibatalkan.'
+    await loadBookings()
+  } catch (err) {
+    bookingError.value = apiErrorMessage(err, 'Gagal membatalkan pemesanan.')
+  } finally {
+    cancellingBookingId.value = null
+  }
+}
+
+const handleDuplicate = async () => {
+  duplicateError.value = ''
+  duplicateMessage.value = ''
+
+  if (!selectedTripId.value) {
+    duplicateError.value = 'Pilih perjalanan terlebih dahulu.'
+    return
+  }
+
+  if (!duplicateForm.tanggal_berangkat || !duplicateForm.tanggal_pulang) {
+    duplicateError.value = 'Tanggal berangkat dan kembali wajib diisi.'
+    return
+  }
+
+  if (duplicateForm.tanggal_pulang < duplicateForm.tanggal_berangkat) {
+    duplicateError.value = 'Tanggal kembali tidak boleh sebelum tanggal berangkat.'
+    return
+  }
+
+  duplicating.value = true
+
+  try {
+    const copy = await duplicateTrip(selectedTripId.value, {
+      tanggal_berangkat: duplicateForm.tanggal_berangkat,
+      tanggal_pulang: duplicateForm.tanggal_pulang,
+    })
+
+    duplicateMessage.value = `Draft salinan dibuat (TRV-${copy.id}). Lengkapi lalu ajukan dari menu Rencana.`
+    duplicateForm.tanggal_berangkat = ''
+    duplicateForm.tanggal_pulang = ''
+    showDuplicateForm.value = false
+    await fetchTrips({ page: 1 })
+  } catch (err) {
+    duplicateError.value = apiErrorMessage(err, 'Gagal membuat salinan.')
+  } finally {
+    duplicating.value = false
+  }
+}
+
 watch(selectedTripId, () => {
   formError.value = ''
   formMessage.value = ''
   paymentError.value = ''
   paymentMessage.value = ''
+  bookingError.value = ''
+  bookingMessage.value = ''
+  showBookingForm.value = false
+  duplicateError.value = ''
+  duplicateMessage.value = ''
+  showDuplicateForm.value = false
   loadExpenses().catch(() => {})
   loadPayment()
+  loadBookings()
+  fetchVendors().catch(() => {})
 })
 
 onMounted(async () => {
@@ -582,6 +998,7 @@ onMounted(async () => {
 .page-header h1 { margin: 0; font-size: 23px; font-weight: 700; color: var(--text); }
 .add-button { min-height: 34px; padding: 0 13px; border: 1px solid var(--primary); border-radius: 7px; background: var(--primary); color: #fff; font-family: inherit; font-size: 10px; font-weight: 600; cursor: pointer; }
 .add-button:disabled { cursor: not-allowed; opacity: 0.55; }
+.add-button.outline { background: var(--white); color: var(--primary); }
 .data-error { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #f4c7c7; border-radius: 8px; background: #fff5f5; color: #b42318; font-size: 11px; }
 .data-success { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #bfe8d8; border-radius: 8px; background: #f1fbf7; color: #147a5b; font-size: 11px; }
 
@@ -618,13 +1035,32 @@ onMounted(async () => {
 .pay-disetujui { background: #e9f0ff; color: #1d4ed8; }
 .pay-ditolak { background: #fee2e2; color: #b42318; }
 .pay-dibayar { background: #dff7ef; color: #18a77c; }
+.book-dipesan { background: #fff3df; color: #b45309; }
+.book-dikonfirmasi { background: #e9f0ff; color: #1d4ed8; }
+.book-selesai { background: #dff7ef; color: #18a77c; }
+.book-dibatalkan { background: #fee2e2; color: #b42318; }
+
+.booking-card { padding: 16px 18px; margin-bottom: 20px; background: var(--white); border: 1px solid var(--border); border-radius: 10px; }
+.booking-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.booking-header h2 { margin: 0 0 4px; font-size: 13px; font-weight: 700; color: var(--text); }
+.booking-header p { margin: 0; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+.doc-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.booking-form { margin-bottom: 14px; padding-top: 14px; border-top: 1px solid #edf0f4; }
+.booking-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.booking-item { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 0; border-bottom: 1px solid #edf0f4; }
+.booking-item:last-child { padding-bottom: 0; border-bottom: none; }
+.booking-info { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 2px; }
+.booking-info strong { color: var(--text); font-size: 11px; }
+.booking-info span { color: var(--text-muted); font-size: 10px; }
+.empty-text { padding: 12px 0; color: #9aa4b5; font-size: 11px; }
+.form-grid .filter-group.full { grid-column: 1 / -1; }
 
 /* FILTER CARD */
 .filter-card { display: grid; grid-template-columns: minmax(190px, 0.8fr) minmax(240px, 1fr) 160px 160px; gap: 14px; padding: 16px; margin-bottom: 24px; background: var(--white); border: 1px solid var(--border); border-radius: 10px; }
 .filter-group { display: flex; flex-direction: column; gap: 6px; }
 .filter-group label { font-size: 9px; font-weight: 600; color: #667085; }
 .search-input, .date-input { height: 31px; display: flex; align-items: center; border: 1px solid #dce2eb; border-radius: 6px; background: var(--white); }
-.search-input svg, .date-input svg { width: 14px; height: 14px; margin: 0 8px; fill: #718096; flex-shrink: 0; }
+.search-input svg, .date-input svg { width: 14px; height: 14px; margin: 0 8px; color: #718096; flex-shrink: 0; }
 .search-input input, .date-input input, .filter-group select { width: 100%; height: 31px; box-sizing: border-box; border: 1px solid #dce2eb; border-radius: 6px; background: var(--white); color: var(--text); outline: none; font-family: inherit; font-size: 10px; }
 .search-input input { border: none; }
 .date-input input { border: none; padding: 0 0 0 4px; }
@@ -658,6 +1094,8 @@ tbody tr:last-child td { border-bottom: none; }
 .upload-button input { display: none; }
 .text-danger { padding: 0; border: 0; background: transparent; color: #b42318; font-family: inherit; font-size: 9px; font-weight: 600; cursor: pointer; }
 .text-danger:disabled { cursor: not-allowed; opacity: 0.6; }
+.text-button { padding: 0; border: 0; background: transparent; color: #1769ff; font-family: inherit; font-size: 9px; font-weight: 600; cursor: pointer; }
+.text-button:disabled { cursor: not-allowed; opacity: 0.6; }
 .table-state { height: 90px; text-align: center; color: #8792a5; font-size: 11px; }
 
 /* MOBILE CARDS */

@@ -1,7 +1,7 @@
-import type { ReportTable, TripQuery } from '~/types/api'
+import type { AnalyticsData, ReportTable, TripQuery } from '~/types/api'
 import { apiErrorMessage } from '~/composables/useApi'
 
-type ReportKind = 'trips' | 'expenses'
+type ReportKind = 'trips' | 'expenses' | 'bookings' | 'budgets'
 type ReportFormat = 'pdf' | 'xlsx'
 
 export const useReports = () => {
@@ -9,6 +9,7 @@ export const useReports = () => {
 
   const tripReport = ref<ReportTable | null>(null)
   const expenseReport = ref<ReportTable | null>(null)
+  const analytics = ref<AnalyticsData | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -71,13 +72,27 @@ export const useReports = () => {
     URL.revokeObjectURL(url)
   }
 
+  const fetchAnalytics = async (year: number | string) => {
+    try {
+      const response = await get<{ data: AnalyticsData }>('/reports/analytics', { year })
+      analytics.value = response.data
+
+      return analytics.value
+    } catch (err) {
+      error.value = apiErrorMessage(err, 'Gagal memuat tren belanja.')
+      throw err
+    }
+  }
+
   return {
     tripReport,
     expenseReport,
+    analytics,
     loading,
     error,
     fetchTripReport,
     fetchExpenseReport,
+    fetchAnalytics,
     downloadReport,
   }
 }
