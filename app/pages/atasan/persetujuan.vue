@@ -1,6 +1,6 @@
 <template>
   <div class="atasan-page">
-    <div class="breadcrumb"><NuxtLink to="/atasan/dashboard">Dashboard</NuxtLink><span>›</span><strong>Persetujuan</strong></div>
+    <div class="breadcrumb"><NuxtLink to="/atasan/dashboard">Dashboard</NuxtLink><AppIcon name="chevron-right" class="crumb-sep" /><strong>Persetujuan</strong></div>
 
     <header class="page-header">
       <div>
@@ -15,10 +15,10 @@
     </div>
 
     <section class="metrics">
-      <AtasanMetricCard title="Total Pengajuan" :value="metricValue(requests.length)" icon="▤" />
-      <AtasanMetricCard title="Menunggu Persetujuan" :value="metricValue(metrics.pending)" icon="◷" />
-      <AtasanMetricCard title="Disetujui" :value="metricValue(metrics.approved)" icon="✓" />
-      <AtasanMetricCard title="Ditolak" :value="metricValue(metrics.rejected)" icon="×" />
+      <AtasanMetricCard title="Total Pengajuan" :value="metricValue(requests.length)" icon="file-text" />
+      <AtasanMetricCard title="Menunggu Persetujuan" :value="metricValue(metrics.pending)" icon="clock" />
+      <AtasanMetricCard title="Disetujui" :value="metricValue(metrics.approved)" icon="check-circle" />
+      <AtasanMetricCard title="Ditolak" :value="metricValue(metrics.rejected)" icon="x-circle" />
     </section>
 
     <section class="panel">
@@ -67,14 +67,34 @@
           </tbody>
         </table>
       </div>
+
+      <div class="table-footer">
+        <span class="showing-text">
+          Menampilkan {{ filteredRequests.length }} dari {{ totalRequests }} pengajuan
+        </span>
+
+        <div v-if="lastPage > 1" class="pagination">
+          <button
+            v-for="pageNumber in lastPage"
+            :key="pageNumber"
+            class="page-button"
+            :class="{ active: pageNumber === page }"
+            type="button"
+            @click="changePage(pageNumber)"
+          >
+            {{ pageNumber }}
+          </button>
+        </div>
+      </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { TripStatus } from '~/types/api'
 import { useTrips } from '~/composables/useTrips'
+import { useDashboard } from '~/composables/useDashboard'
 import { formatCurrency, formatDate, formatNumber, periodRange, tripStatusClass, tripStatusLabel } from '~/utils/format'
 
 definePageMeta({ layout: 'atasan' })
@@ -93,7 +113,8 @@ interface ApprovalRequest {
   rawStatus: TripStatus
 }
 
-const { trips, loading, error, fetchTrips } = useTrips()
+const { trips, meta, loading, error, fetchTrips } = useTrips()
+const { summary, fetchDashboard } = useDashboard()
 
 const search = ref('')
 const status = ref('')
@@ -114,10 +135,12 @@ const requests = computed<ApprovalRequest[]>(() => trips.value.map((trip) => ({
   rawStatus: trip.status,
 })))
 
+const perStatus = computed(() => summary.value?.per_status)
+
 const metrics = computed(() => ({
-  pending: requests.value.filter((request) => request.rawStatus === 'diajukan').length,
-  approved: requests.value.filter((request) => request.rawStatus === 'disetujui').length,
-  rejected: requests.value.filter((request) => request.rawStatus === 'ditolak').length,
+  pending: perStatus.value?.diajukan ?? requests.value.filter((request) => request.rawStatus === 'diajukan').length,
+  approved: perStatus.value?.disetujui ?? requests.value.filter((request) => request.rawStatus === 'disetujui').length,
+  rejected: perStatus.value?.ditolak ?? requests.value.filter((request) => request.rawStatus === 'ditolak').length,
 }))
 
 const metricValue = (value: number) => {
@@ -125,44 +148,66 @@ const metricValue = (value: number) => {
   return formatNumber(value)
 }
 
-const departments = computed(() => [...new Set(
-  requests.value
-    .map((request) => request.department)
-    .filter((value) => value && value !== '—'),
-)].sort((a, b) => a.localeCompare(b)))
+const departments = computed(() => {
+  const values = new Set(
+    requests.value
+      .map((request) => request.department)
+      .filter((value) => value && value !== '—'),
+  )
 
-const filteredRequests = computed(() => {
-  const query = search.value.toLocaleLowerCase()
-  const range = periodRange(period.value)
+  // Pertahankan pilihan aktif walau server memfilter baris yang tampil.
+  if (department.value) values.add(department.value)
 
-  return requests.value.filter((request) => {
-    const matchesSearch = !query
-      || `${request.employee} ${request.destination}`.toLocaleLowerCase().includes(query)
-    const matchesStatus = !status.value || request.rawStatus === status.value
-    const matchesDepartment = !department.value || request.department === department.value
-    const matchesPeriod = (!range.dari || request.departure >= range.dari)
-      && (!range.sampai || request.departure <= range.sampai)
-
-    return matchesSearch && matchesStatus && matchesDepartment && matchesPeriod
-  })
+  return Array.from(values).sort((a, b) => a.localeCompare(b))
 })
 
+// Filter berjalan di server (nama/tujuan/keperluan, status, departemen, periode).
+const filteredRequests = computed(() => requests.value)
+
+const currentParams = () => ({
+  q: search.value.trim() || undefined,
+  status: (status.value || undefined) as TripStatus | undefined,
+  department: department.value || undefined,
+  ...periodRange(period.value),
+})
+
+const page = ref(1)
+
 const loadTrips = async () => {
-  const firstPage = await fetchTrips({ page: 1 })
-  const allTrips = [...firstPage.data]
-  const lastPage = firstPage.meta?.last_page ?? 1
-
-  for (let page = 2; page <= lastPage; page += 1) {
-    const nextPage = await fetchTrips({ page })
-    allTrips.push(...nextPage.data)
-  }
-
-  trips.value = allTrips
+  await fetchTrips({ ...currentParams(), page: page.value }).catch(() => {})
 }
+
+const reloadFilters = async () => {
+  page.value = 1
+  await loadTrips()
+}
+
+const changePage = async (value: number) => {
+  const lastPage = meta.value?.last_page ?? 1
+  if (value < 1 || value > lastPage || value === page.value) return
+  page.value = value
+  await loadTrips()
+}
+
+const lastPage = computed(() => Math.max(meta.value?.last_page ?? 1, 1))
+const totalRequests = computed(() => meta.value?.total ?? requests.value.length)
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    reloadFilters().catch(() => {})
+  }, 400)
+})
+
+watch([status, period, department], () => {
+  reloadFilters().catch(() => {})
+})
 
 onMounted(async () => {
   try {
-    await loadTrips()
+    await Promise.all([loadTrips(), fetchDashboard()])
   } catch {
     // Pesan error sudah disimpan oleh composable.
   }
@@ -186,6 +231,29 @@ table { width: 100%; min-width: 930px; border-collapse: collapse; text-align: le
 th { padding: 11px 9px; background: #f8fafc; color: #788397; font-size: 10px; font-weight: 600; }
 td { padding: 13px 9px; border-bottom: 1px solid #edf0f4; color: var(--text); font-size: 11px; }
 .empty-cell { height: 120px; color: var(--text-muted); text-align: center; }
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 4px 0;
+}
+.showing-text { font-size: 10px; color: #788397; }
+.pagination { display: flex; flex-wrap: wrap; gap: 6px; }
+.page-button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.page-button.active { border-color: var(--primary); background: var(--primary); color: #fff; }
 .status { display: inline-block; padding: 5px 8px; border-radius: 20px; background: #fff5dc; color: #9a6a08; font-size: 10px; white-space: nowrap; }
 .status.approved { background: #e8f7ef; color: #15803d; }
 .status.rejected { background: #fdecec; color: #b42318; }

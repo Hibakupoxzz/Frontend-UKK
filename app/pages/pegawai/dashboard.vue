@@ -14,25 +14,25 @@
       <DashboardSummaryCard
         title="Total Pengajuan"
         :value="summary?.total_perjalanan ?? 0"
-        icon="📝"
+        icon="file-plus"
       />
 
       <DashboardSummaryCard
         title="Menunggu Persetujuan"
         :value="summary?.per_status.diajukan ?? 0"
-        icon="◷"
+        icon="clock"
       />
 
       <DashboardSummaryCard
         title="Perjalanan Aktif"
         :value="summary?.per_status.berjalan ?? 0"
-        icon="➤"
+        icon="navigation"
       />
 
       <DashboardSummaryCard
         title="Ringkasan Pengeluaran"
         :value="formatCurrency(summary?.total_biaya ?? 0)"
-        icon="💰"
+        icon="wallet"
       />
     </div>
 
@@ -75,14 +75,19 @@
         <p v-if="pageLoading" class="state-message">Memuat aktivitas...</p>
         <p v-else-if="recentActivities.length === 0" class="state-message">Belum ada aktivitas perjalanan.</p>
         <div v-else class="activity-list">
-          <article v-for="activity in recentActivities" :key="activity.id" class="activity-item">
-            <div class="activity-icon">{{ activityIcon(activity.status) }}</div>
+          <NuxtLink
+            v-for="activity in recentActivities"
+            :key="activity.id"
+            class="activity-item"
+            to="/pegawai/laporan"
+          >
+            <div class="activity-icon"><AppIcon :name="activity.icon" /></div>
             <div class="activity-info">
-              <p>Perjalanan dinas ke {{ activity.tujuan }}</p>
+              <p>{{ activity.title }}</p>
             </div>
-            <span class="activity-status" :class="tripStatusClass(activity.status)">{{ activity.status_label || tripStatusLabel(activity.status) }}</span>
-            <span class="activity-time">{{ relativeTime(activity.created_at) }}</span>
-          </article>
+            <span class="activity-status" :class="activity.statusClass">{{ activity.status }}</span>
+            <span class="activity-time">{{ activity.time }}</span>
+          </NuxtLink>
         </div>
       </section>
     </div>
@@ -94,19 +99,21 @@
       </div>
       <div class="quick-actions">
         <NuxtLink to="/pegawai/rencana" class="action-button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/></svg>
+          <AppIcon name="calendar-plus" />
           <span>Buat Rencana Perjalanan</span>
         </NuxtLink>
         <NuxtLink to="/pegawai/pengeluaran" class="action-button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2Zm0 14H4V8h16v10Zm-2-5h-4v2h4v-2Z"/></svg>
+          <AppIcon name="wallet" />
           <span>Ajukan Pengeluaran</span>
         </NuxtLink>
         <NuxtLink to="/pegawai/laporan" class="action-button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM16 8v8M12 12h6M12 16h6"/></svg>
+          <AppIcon name="file-text" />
           <span>Lihat Laporan Saya</span>
         </NuxtLink>
       </div>
     </section>
+
+    <DashboardTripCalendar trip-link="/pegawai/laporan" />
   </div>
 </template>
 
@@ -141,22 +148,48 @@ const upcomingTrips = computed(() => {
     .sort((a, b) => a.tanggal_berangkat.localeCompare(b.tanggal_berangkat))
 })
 
-const recentActivities = computed(() => summary.value?.terbaru ?? [])
+const recentActivities = computed(() => {
+  const activities = summary.value?.aktivitas_terbaru ?? []
+
+  if (activities.length > 0) {
+    return activities.slice(0, 8).map((activity) => ({
+      id: activity.id,
+      icon: activity.kind === 'approval' ? 'check-circle' : activity.kind === 'payment' ? 'credit-card' : 'pencil',
+      title: activity.detail ? `${activity.title} — ${activity.detail}` : activity.title,
+      status: activity.kind === 'approval' ? 'Keputusan' : activity.kind === 'payment' ? 'Pembayaran' : 'Pengajuan',
+      statusClass:
+        activity.tone === 'success' ? 'completed'
+        : activity.tone === 'danger' ? 'rejected'
+        : activity.tone === 'warning' ? 'waiting'
+        : 'ongoing',
+      time: relativeTime(activity.at),
+    }))
+  }
+
+  return (summary.value?.terbaru ?? []).map((trip) => ({
+    id: trip.id,
+    icon: activityIcon(trip.status),
+    title: `Perjalanan dinas ke ${trip.tujuan}`,
+    status: trip.status_label || tripStatusLabel(trip.status),
+    statusClass: tripStatusClass(trip.status),
+    time: relativeTime(trip.created_at),
+  }))
+})
 
 const activityIcon = (status: TripStatus): string => {
   switch (status) {
     case 'selesai':
     case 'lengkap':
     case 'disetujui':
-      return '✓'
+      return 'check-circle'
     case 'berjalan':
-      return '➤'
+      return 'navigation'
     case 'diajukan':
-      return '🕐'
+      return 'clock'
     case 'ditolak':
-      return '✕'
+      return 'x-circle'
     default:
-      return '📝'
+      return 'file-plus'
   }
 }
 
@@ -284,9 +317,10 @@ onMounted(async () => {
 
 .activity-list { display: flex; flex-direction: column; gap: 12px; }
 
-.activity-item { display: flex; align-items: center; min-height: 52px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.activity-item { display: flex; align-items: center; min-height: 52px; padding: 10px 0; border-bottom: 1px solid var(--border); text-decoration: none; color: inherit; }
 .activity-item:last-child { border-bottom: none; }
-.activity-item .activity-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; margin-right: 12px; background: #eef3ff; border-radius: 50%; font-size: 13px; }
+.activity-item[href]:hover .activity-info p { color: var(--primary); }
+.activity-item .activity-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; margin-right: 12px; background: #eef3ff; border-radius: 50%; color: var(--primary); font-size: 16px; }
 .activity-item .activity-info { flex: 1; min-width: 0; }
 .activity-item .activity-info p { margin: 0; font-size: 11px; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
 .activity-item .activity-status { margin-right: 14px; padding: 5px 8px; border-radius: 4px; font-size: 9px; white-space: nowrap; }

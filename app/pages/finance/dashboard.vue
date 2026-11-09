@@ -14,25 +14,25 @@
       <DashboardSummaryCard
         title="Total Pengeluaran"
         :value="formatCurrency(totalExpenses)"
-        icon="💰"
+        icon="wallet"
       />
 
       <DashboardSummaryCard
         title="Jumlah Pengeluaran"
         :value="String(expenseRows.length)"
-        icon="▤"
+        icon="list"
       />
 
       <DashboardSummaryCard
         title="Tanpa Bukti"
         :value="formatCurrency(withoutReceipt)"
-        icon="⏳"
+        icon="hourglass"
       />
 
       <DashboardSummaryCard
         title="Dengan Bukti"
         :value="formatCurrency(withReceipt)"
-        icon="✓"
+        icon="check-circle"
       />
     </div>
 
@@ -206,6 +206,27 @@
         </table>
       </div>
     </section>
+
+    <!-- Recent Activities -->
+    <section class="queue-card">
+      <div class="section-header">
+        <h2>Aktivitas Terbaru</h2>
+        <NuxtLink to="/finance/laporan" class="view-all">Lihat Semua</NuxtLink>
+      </div>
+      <div v-if="financeActivities.length === 0" class="table-state">Belum ada aktivitas.</div>
+      <ul v-else class="activity-list">
+        <li v-for="activity in financeActivities" :key="activity.id">
+          <NuxtLink to="/finance/laporan" class="activity-item">
+            <span class="activity-icon"><AppIcon :name="activity.icon" /></span>
+            <span class="activity-info">{{ activity.title }}</span>
+            <span class="status-badge" :class="activity.statusClass">{{ activity.status }}</span>
+            <span class="activity-time">{{ activity.time }}</span>
+          </NuxtLink>
+        </li>
+      </ul>
+    </section>
+
+    <DashboardTripCalendar trip-link="/finance/laporan" />
   </div>
 </template>
 
@@ -300,6 +321,34 @@ const statusData = computed(() => {
 })
 
 const recentTrips = computed(() => summary.value?.terbaru?.slice(0, 5) ?? [])
+
+const financeActivities = computed(() => {
+  const activities = summary.value?.aktivitas_terbaru ?? []
+
+  if (activities.length > 0) {
+    return activities.slice(0, 5).map((activity) => ({
+      id: activity.id,
+      icon: activity.kind === 'approval' ? 'check-circle' : activity.kind === 'payment' ? 'credit-card' : 'pencil',
+      title: activity.detail ? `${activity.title} — ${activity.detail}` : activity.title,
+      status: activity.kind === 'approval' ? 'Keputusan' : activity.kind === 'payment' ? 'Pembayaran' : 'Pengajuan',
+      statusClass:
+        activity.tone === 'success' ? 'approved'
+        : activity.tone === 'danger' ? 'rejected'
+        : activity.tone === 'warning' ? 'waiting'
+        : 'completed',
+      time: formatDate(activity.at),
+    }))
+  }
+
+  return recentTrips.value.map((trip) => ({
+    id: `trip-${trip.id}`,
+    icon: 'pencil',
+    title: `Perjalanan ke ${trip.tujuan} — ${trip.user?.name || 'Pegawai'}`,
+    status: tripStatusLabel(trip.status),
+    statusClass: tripStatusClass(trip.status),
+    time: formatDate(trip.created_at),
+  }))
+})
 
 const pendingPayments = computed(() =>
   payments.value
@@ -574,6 +623,44 @@ tbody tr:hover {
 .status-badge.rejected { background: #ffe8e8; color: #ef5350; }
 .status-badge.ongoing { background: #fff3df; color: #b45309; }
 .status-badge.completed { background: #dff7ef; color: #18a77c; }
+
+.activity-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.activity-list li + li { border-top: 1px solid #f0f2f6; }
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.activity-icon {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #eef3ff;
+  color: var(--primary);
+  font-size: 15px;
+}
+
+.activity-info {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.activity-item:hover .activity-info { color: var(--primary); }
+
+.activity-time { flex-shrink: 0; font-size: 9px; color: #94a3b8; }
 
 /* RESPONSIVE */
 @media (max-width: 1023px) {

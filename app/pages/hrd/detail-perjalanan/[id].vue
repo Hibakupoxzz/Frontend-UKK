@@ -2,9 +2,9 @@
   <div class="hrd-page">
     <div class="breadcrumb">
       <NuxtLink to="/hrd/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/hrd/pelaksanaan">Pelaksanaan Perjalanan</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Detail</strong>
     </div>
 
@@ -13,10 +13,23 @@
         <p class="eyebrow">ID Perjalanan: {{ tripId }}</p>
         <h1>Detail Perjalanan Dinas</h1>
       </div>
-      <span v-if="trip" class="status" :class="tripStatusClass(trip.status)">
-        {{ tripStatusLabel(trip.status) }}
-      </span>
-      <span v-else class="status">Status belum tersedia</span>
+      <div class="header-side">
+        <template v-if="canPrint">
+          <button type="button" class="print-button" :disabled="printingDoc" @click="printDoc('spt')">
+            {{ printingDoc ? '...' : 'Cetak SPT' }}
+          </button>
+          <button type="button" class="print-button" :disabled="printingDoc" @click="printDoc('spd')">
+            {{ printingDoc ? '...' : 'Cetak SPD' }}
+          </button>
+          <button type="button" class="print-button outline" :disabled="printingDoc" @click="saveCalendar">
+            {{ printingDoc ? '...' : 'Kalender' }}
+          </button>
+        </template>
+        <span v-if="trip" class="status" :class="tripStatusClass(trip.status)">
+          {{ tripStatusLabel(trip.status) }}
+        </span>
+        <span v-else class="status">Status belum tersedia</span>
+      </div>
     </header>
 
     <div v-if="error" class="data-error" role="alert">
@@ -82,6 +95,23 @@
       </section>
 
       <section class="panel list-panel">
+        <h2>Pemesanan Tiket &amp; Penginapan</h2>
+        <ul v-if="trip.bookings?.length" class="booking-list">
+          <li v-for="booking in trip.bookings" :key="booking.id">
+            <div class="booking-head">
+              <strong>{{ booking.jenis_label }}</strong>
+              <span class="status" :class="bookingStatusClass(booking.status)">{{ booking.status_label }}</span>
+            </div>
+            <span class="booking-meta">
+              {{ booking.vendor_name ?? booking.vendor ?? '—' }}{{ booking.kode_booking ? ` · ${booking.kode_booking}` : '' }}
+              · {{ formatDate(booking.tanggal) }} · {{ formatCurrency(booking.harga) }}
+            </span>
+          </li>
+        </ul>
+        <p v-else class="empty-text">Belum ada pemesanan tiket atau penginapan.</p>
+      </section>
+
+      <section class="panel list-panel">
         <div class="panel-heading">
           <h2>Pengeluaran</h2>
           <strong>{{ formatCurrency(totalBiaya) }}</strong>
@@ -127,6 +157,8 @@
         </div>
       </section>
 
+      <TripComments v-if="trip" :trip-id="trip.id" />
+
       <NuxtLink to="/hrd/pelaksanaan" class="back-link">Kembali ke Pelaksanaan Perjalanan</NuxtLink>
     </template>
 
@@ -150,8 +182,37 @@ import {
 const route = useRoute()
 const tripId = computed(() => String(route.params.id ?? ''))
 const trip = ref<Trip | null>(null)
+const printingDoc = ref(false)
 
-const { fetchTrip, loading, error } = useTrips()
+const { fetchTrip, downloadDocument, downloadCalendar, loading, error } = useTrips()
+
+const canPrint = computed(() =>
+  !!trip.value && ['disetujui', 'berjalan', 'selesai', 'lengkap'].includes(trip.value.status),
+)
+
+const printDoc = async (kind: 'spt' | 'spd') => {
+  if (!trip.value || printingDoc.value) return
+
+  printingDoc.value = true
+
+  try {
+    await downloadDocument(trip.value.id, kind)
+  } finally {
+    printingDoc.value = false
+  }
+}
+
+const saveCalendar = async () => {
+  if (!trip.value || printingDoc.value) return
+
+  printingDoc.value = true
+
+  try {
+    await downloadCalendar(trip.value.id)
+  } finally {
+    printingDoc.value = false
+  }
+}
 const {
   expenses,
   totalBiaya,
@@ -167,6 +228,19 @@ const needLabel = (jenis: string) => {
 
 const formatCurrencyOrDash = (value: number | null | undefined) =>
   value === null || value === undefined ? '—' : formatCurrency(value)
+
+const bookingStatusClass = (status: string) => {
+  switch (status) {
+    case 'dikonfirmasi':
+      return 'approved'
+    case 'selesai':
+      return 'completed'
+    case 'dibatalkan':
+      return 'rejected'
+    default:
+      return 'waiting'
+  }
+}
 
 const varianceClass = computed(() => {
   const variance = trip.value?.selisih_biaya
@@ -199,6 +273,21 @@ onMounted(async () => {
 .breadcrumb a, .back-link { color: var(--primary); }
 .breadcrumb strong { color: var(--text); font-weight: 600; }
 .page-header { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 18px; }
+.header-side { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.print-button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.print-button:disabled { cursor: not-allowed; opacity: 0.6; }
+.print-button.outline { background: var(--white); color: var(--primary); }
 .eyebrow { margin: 0 0 5px; color: var(--text-muted); font-size: 11px; }
 h1 { margin: 0; color: var(--text); font-size: 24px; }
 .status { display: inline-block; padding: 7px 10px; border-radius: 20px; background: #edf1f7; color: #667085; font-size: 10px; white-space: nowrap; }
@@ -219,9 +308,9 @@ dd { margin: 6px 0 0; color: var(--text); font-size: 12px; overflow-wrap: anywhe
 dd.over-budget { color: #b42318; font-weight: 600; }
 dd.under-budget { color: #15803d; font-weight: 600; }
 .wide { grid-column: 1 / -1; }
-.need-list, .document-list, .approval-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.need-list, .document-list, .approval-list, .booking-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .need-list li { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid #edf0f4; font-size: 11px; }
-.need-list li:last-child, .approval-list li:last-child { padding-bottom: 0; border-bottom: none; }
+.need-list li:last-child, .approval-list li:last-child, .booking-list li:last-child { padding-bottom: 0; border-bottom: none; }
 .need-list strong { color: var(--text); font-weight: 600; }
 .need-list span, .empty-text { color: var(--text-muted); font-size: 11px; }
 .document-list a { color: var(--primary); font-size: 11px; font-weight: 600; }
@@ -229,6 +318,10 @@ dd.under-budget { color: #15803d; font-weight: 600; }
 .approval-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .approval-meta { color: var(--text-muted); font-size: 10px; }
 .approval-note { color: var(--text); font-size: 11px; line-height: 1.5; }
+.booking-list li { display: grid; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid #edf0f4; }
+.booking-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.booking-head strong { color: var(--text); font-size: 11px; font-weight: 600; }
+.booking-meta { color: var(--text-muted); font-size: 10px; }
 .table-wrapper { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th { padding: 9px 8px; background: #f3f4f6; color: #718096; font-size: 9px; font-weight: 600; text-align: left; }

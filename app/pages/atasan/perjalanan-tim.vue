@@ -1,6 +1,6 @@
 <template>
   <div class="atasan-page">
-    <div class="breadcrumb"><NuxtLink to="/atasan/dashboard">Dashboard</NuxtLink><span>›</span><strong>Perjalanan Tim</strong></div>
+    <div class="breadcrumb"><NuxtLink to="/atasan/dashboard">Dashboard</NuxtLink><AppIcon name="chevron-right" class="crumb-sep" /><strong>Perjalanan Tim</strong></div>
 
     <header class="page-header">
       <div><h1>Perjalanan Tim</h1><p>Pantau jadwal dan status perjalanan dinas anggota tim.</p></div>
@@ -13,10 +13,10 @@
     </div>
 
     <section class="metrics">
-      <AtasanMetricCard title="Total Perjalanan Tim" :value="metricValue(trips.length)" icon="▤" />
-      <AtasanMetricCard title="Menunggu Keberangkatan" :value="metricValue(metrics.approved)" icon="◷" />
-      <AtasanMetricCard title="Sedang Berlangsung" :value="metricValue(metrics.ongoing)" icon="➤" />
-      <AtasanMetricCard title="Perjalanan Selesai" :value="metricValue(metrics.completed)" icon="✓" />
+      <AtasanMetricCard title="Total Perjalanan Tim" :value="metricValue(trips.length)" icon="route" />
+      <AtasanMetricCard title="Menunggu Keberangkatan" :value="metricValue(metrics.approved)" icon="clock" />
+      <AtasanMetricCard title="Sedang Berlangsung" :value="metricValue(metrics.ongoing)" icon="navigation" />
+      <AtasanMetricCard title="Perjalanan Selesai" :value="metricValue(metrics.completed)" icon="check-circle" />
     </section>
 
     <section class="panel">
@@ -37,6 +37,25 @@
             <tr v-for="trip in filteredTrips" :key="trip.id"><td>{{ trip.id }}</td><td>{{ trip.employee }}</td><td>{{ trip.destination }}</td><td>{{ trip.departure }}</td><td>{{ trip.returnDate }}</td><td>{{ trip.estimate }} / {{ trip.realization }}</td><td><span class="status" :class="trip.statusClass">{{ trip.status }}</span></td><td><NuxtLink :to="`/atasan/perjalanan-tim/${trip.id}`" class="detail-link">Detail</NuxtLink></td></tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="table-footer">
+        <span class="showing-text">
+          Menampilkan {{ filteredTrips.length }} dari {{ totalTrips }} perjalanan
+        </span>
+
+        <div v-if="lastPage > 1" class="pagination">
+          <button
+            v-for="pageNumber in lastPage"
+            :key="pageNumber"
+            class="page-button"
+            :class="{ active: pageNumber === page }"
+            type="button"
+            @click="changePage(pageNumber)"
+          >
+            {{ pageNumber }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -61,9 +80,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { TripStatus } from '~/types/api'
 import { useTrips } from '~/composables/useTrips'
+import { useDashboard } from '~/composables/useDashboard'
 import { formatCurrency, formatDate, formatNumber, periodRange, tripStatusClass, tripStatusLabel } from '~/utils/format'
 
 definePageMeta({ layout: 'atasan' })
@@ -83,7 +103,11 @@ interface TeamTrip {
   department: string
 }
 
-const { trips: tripData, loading, error, fetchTrips } = useTrips()
+const { trips: tripData, meta, loading, error, fetchTrips } = useTrips()
+const { summary, fetchDashboard } = useDashboard()
+
+// Jadwal terdekat diambil terpisah agar tidak terpengaruh paginasi tabel.
+const { trips: upcomingData, fetchTrips: fetchUpcoming } = useTrips()
 
 const search = ref('')
 const status = ref('')
@@ -105,10 +129,14 @@ const trips = computed<TeamTrip[]>(() => tripData.value.map((trip) => ({
   department: trip.user?.department ?? '—',
 })))
 
+const perStatus = computed(() => summary.value?.per_status)
+
 const metrics = computed(() => ({
-  approved: trips.value.filter((trip) => trip.rawStatus === 'disetujui').length,
-  ongoing: trips.value.filter((trip) => trip.rawStatus === 'berjalan').length,
-  completed: trips.value.filter((trip) => trip.rawStatus === 'selesai' || trip.rawStatus === 'lengkap').length,
+  approved: perStatus.value?.disetujui ?? trips.value.filter((trip) => trip.rawStatus === 'disetujui').length,
+  ongoing: perStatus.value?.berjalan ?? trips.value.filter((trip) => trip.rawStatus === 'berjalan').length,
+  completed: perStatus.value
+    ? perStatus.value.selesai + perStatus.value.lengkap
+    : trips.value.filter((trip) => trip.rawStatus === 'selesai' || trip.rawStatus === 'lengkap').length,
 }))
 
 const metricValue = (value: number) => {
@@ -116,56 +144,86 @@ const metricValue = (value: number) => {
   return formatNumber(value)
 }
 
-const departments = computed(() => [...new Set(
-  trips.value
-    .map((trip) => trip.department)
-    .filter((value) => value && value !== '—'),
-)].sort((a, b) => a.localeCompare(b)))
+const departments = computed(() => {
+  const values = new Set(
+    trips.value
+      .map((trip) => trip.department)
+      .filter((value) => value && value !== '—'),
+  )
 
-const filteredTrips = computed(() => {
-  const query = search.value.toLocaleLowerCase()
-  const range = periodRange(period.value)
+  // Pertahankan pilihan aktif walau server memfilter baris yang tampil.
+  if (department.value) values.add(department.value)
 
-  return trips.value.filter((trip) => {
-    const matchesSearch = !query
-      || `${trip.employee} ${trip.destination}`.toLocaleLowerCase().includes(query)
-    const matchesStatus = !status.value
-      || (status.value === 'selesai'
-        ? trip.rawStatus === 'selesai' || trip.rawStatus === 'lengkap'
-        : trip.rawStatus === status.value)
-    const matchesDepartment = !department.value || trip.department === department.value
-    const matchesPeriod = (!range.dari || trip.departureRaw >= range.dari)
-      && (!range.sampai || trip.departureRaw <= range.sampai)
-
-    return matchesSearch && matchesStatus && matchesDepartment && matchesPeriod
-  })
+  return Array.from(values).sort((a, b) => a.localeCompare(b))
 })
+
+// Filter berjalan di server (nama/tujuan/keperluan, status, departemen, periode).
+const filteredTrips = computed(() => trips.value)
 
 const upcomingTrips = computed(() => {
   const today = new Date().toISOString().slice(0, 10)
 
-  return trips.value
-    .filter((trip) => trip.rawStatus === 'disetujui' && trip.departureRaw >= today)
+  return upcomingData.value
+    .filter((trip) => trip.status === 'disetujui' && trip.tanggal_berangkat >= today)
+    .map((trip) => ({
+      id: trip.id,
+      employee: trip.user?.name ?? '—',
+      destination: trip.tujuan,
+      departure: formatDate(trip.tanggal_berangkat),
+      departureRaw: trip.tanggal_berangkat,
+    }))
     .sort((a, b) => a.departureRaw.localeCompare(b.departureRaw))
     .slice(0, 5)
 })
 
+const currentParams = () => ({
+  q: search.value.trim() || undefined,
+  status: (status.value || undefined) as TripStatus | undefined,
+  department: department.value || undefined,
+  ...periodRange(period.value),
+})
+
 const loadTrips = async () => {
-  const firstPage = await fetchTrips({ page: 1 })
-  const allTrips = [...firstPage.data]
-  const lastPage = firstPage.meta?.last_page ?? 1
-
-  for (let page = 2; page <= lastPage; page += 1) {
-    const nextPage = await fetchTrips({ page })
-    allTrips.push(...nextPage.data)
-  }
-
-  tripData.value = allTrips
+  await fetchTrips({ ...currentParams(), page: page.value }).catch(() => {})
 }
+
+const reloadFilters = async () => {
+  page.value = 1
+  await loadTrips()
+}
+
+const changePage = async (value: number) => {
+  const lastPage = meta.value?.last_page ?? 1
+  if (value < 1 || value > lastPage || value === page.value) return
+  page.value = value
+  await loadTrips()
+}
+
+const lastPage = computed(() => Math.max(meta.value?.last_page ?? 1, 1))
+const totalTrips = computed(() => meta.value?.total ?? trips.value.length)
+
+const page = ref(1)
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    reloadFilters().catch(() => {})
+  }, 400)
+})
+
+watch([status, period, department], () => {
+  reloadFilters().catch(() => {})
+})
 
 onMounted(async () => {
   try {
-    await loadTrips()
+    await Promise.all([
+      loadTrips(),
+      fetchDashboard(),
+      fetchUpcoming({ status: 'disetujui', per_page: 100 }).catch(() => null),
+    ])
   } catch {
     // Pesan error sudah disimpan oleh composable.
   }
@@ -191,6 +249,29 @@ table { width: 100%; min-width: 920px; border-collapse: collapse; text-align: le
 th { padding: 11px 9px; background: #f8fafc; color: #788397; font-size: 10px; font-weight: 600; }
 td { padding: 13px 9px; border-bottom: 1px solid #edf0f4; color: var(--text); font-size: 11px; }
 .empty-cell { height: 100px; color: var(--text-muted); text-align: center; }
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 4px 0;
+}
+.showing-text { font-size: 10px; color: #788397; }
+.pagination { display: flex; flex-wrap: wrap; gap: 6px; }
+.page-button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.page-button.active { border-color: var(--primary); background: var(--primary); color: #fff; }
 .status { display: inline-block; padding: 5px 8px; border-radius: 20px; background: #fff5dc; color: #9a6a08; font-size: 10px; white-space: nowrap; }
 .status.approved { background: #e8f7ef; color: #15803d; }
 .status.rejected { background: #fdecec; color: #b42318; }

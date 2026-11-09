@@ -12,25 +12,25 @@
       <DashboardSummaryCard
         title="Total Pegawai"
         :value="employeeTotal"
-        icon="👥"
+        icon="users"
       />
 
       <DashboardSummaryCard
         title="Total Pengguna"
         :value="userTotal"
-        icon="✓"
+        icon="user"
       />
 
       <DashboardSummaryCard
         title="Dalam Perjalanan"
         :value="berjalanCount"
-        icon="▶"
+        icon="navigation"
       />
 
       <DashboardSummaryCard
         title="Perjalanan Selesai"
         :value="selesaiCount"
-        icon="✓"
+        icon="check-circle"
       />
     </div>
 
@@ -108,16 +108,23 @@
       </div>
       <div class="activity-list">
         <p v-if="recentActivities.length === 0" class="table-state">Belum ada aktivitas.</p>
-        <article v-for="activity in recentActivities" :key="activity.id" class="activity-item">
-          <div class="activity-icon">{{ activity.icon }}</div>
+        <NuxtLink
+          v-for="activity in recentActivities"
+          :key="activity.id"
+          class="activity-item"
+          :to="`/hrd/detail-perjalanan/${activity.tripId}`"
+        >
+          <div class="activity-icon"><AppIcon :name="activity.icon" /></div>
           <div class="activity-info">
             <p>{{ activity.title }}</p>
           </div>
           <span class="activity-status" :class="activity.statusClass">{{ activity.status }}</span>
           <span class="activity-time">{{ activity.time }}</span>
-        </article>
+        </NuxtLink>
       </div>
     </section>
+
+    <DashboardTripCalendar :trip-link="(id) => `/hrd/detail-perjalanan/${id}`" />
   </div>
 </template>
 
@@ -200,14 +207,55 @@ const relativeTime = (value: string | null | undefined) => {
   return formatDate(value)
 }
 
-const recentActivities = computed(() => (summary.value?.terbaru ?? []).map((trip) => ({
-  id: trip.id,
-  icon: trip.status === 'diajukan' ? '🕐' : trip.status === 'berjalan' ? '▶' : '✓',
-  title: `Perjalanan ke ${trip.tujuan} — ${trip.user?.name ?? 'Pegawai'}`,
-  status: tripStatusLabel(trip.status),
-  statusClass: tripStatusClass(trip.status),
-  time: relativeTime(trip.created_at),
-})))
+const activityIconFor = (kind: string): string => {
+  switch (kind) {
+    case 'approval':
+      return 'check-circle'
+    case 'payment':
+      return 'credit-card'
+    default:
+      return 'pencil'
+  }
+}
+
+const activityClassFor = (tone: string): string => {
+  switch (tone) {
+    case 'success':
+      return 'approved'
+    case 'danger':
+      return 'rejected'
+    case 'warning':
+      return 'waiting'
+    default:
+      return 'ongoing'
+  }
+}
+
+const recentActivities = computed(() => {
+  const activities = summary.value?.aktivitas_terbaru ?? []
+
+  if (activities.length > 0) {
+    return activities.slice(0, 8).map((activity) => ({
+      id: activity.id,
+      icon: activityIconFor(activity.kind),
+      title: activity.detail ? `${activity.title} — ${activity.detail}` : activity.title,
+      status: activity.kind === 'approval' ? 'Keputusan' : activity.kind === 'payment' ? 'Pembayaran' : 'Pengajuan',
+      statusClass: activityClassFor(activity.tone),
+      time: relativeTime(activity.at),
+      tripId: activity.trip_id,
+    }))
+  }
+
+  return (summary.value?.terbaru ?? []).map((trip) => ({
+    id: trip.id,
+    icon: trip.status === 'diajukan' ? 'clock' : trip.status === 'berjalan' ? 'navigation' : 'check-circle',
+    title: `Perjalanan ke ${trip.tujuan} — ${trip.user?.name ?? 'Pegawai'}`,
+    status: tripStatusLabel(trip.status),
+    statusClass: tripStatusClass(trip.status),
+    time: relativeTime(trip.created_at),
+    tripId: trip.id,
+  }))
+})
 
 onMounted(async () => {
   try {
@@ -357,10 +405,11 @@ onMounted(async () => {
 
 .activity-list { display: flex; flex-direction: column; gap: 12px; }
 
-.activity-item { display: flex; align-items: center; min-height: 52px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.activity-item { display: flex; align-items: center; min-height: 52px; padding: 10px 0; border-bottom: 1px solid var(--border); text-decoration: none; color: inherit; }
 .activity-item:last-child { border-bottom: none; }
+.activity-item[href]:hover .activity-info p { color: var(--primary); }
 
-.activity-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; margin-right: 12px; background: #eef3ff; border-radius: 50%; font-size: 13px; }
+.activity-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; margin-right: 12px; background: #eef3ff; border-radius: 50%; color: var(--primary); font-size: 16px; }
 .activity-info { flex: 1; min-width: 0; }
 .activity-info p { margin: 0; font-size: 11px; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
 .activity-status { margin-right: 14px; padding: 5px 8px; border-radius: 4px; font-size: 9px; white-space: nowrap; }

@@ -4,7 +4,7 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Perjalanan Dinas</strong>
     </div>
 
@@ -23,11 +23,7 @@
         <label>Cari Kota / Keperluan</label>
 
         <div class="search-input">
-          <svg viewBox="0 0 24 24">
-            <path
-              d="M10.5 4a6.5 6.5 0 1 0 4.08 11.56l4.43 4.43 1.41-1.41-4.43-4.43A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"
-            />
-          </svg>
+          <AppIcon name="search" />
 
           <input
             v-model="search"
@@ -63,12 +59,19 @@
             type="date"
           />
 
-          <svg viewBox="0 0 24 24">
-            <path
-              d="M7 2v2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7Zm12 17H5V9h14v10ZM7 11h3v3H7v-3Z"
-            />
-          </svg>
+          <AppIcon name="calendar" />
         </div>
+      </div>
+
+      <!-- Archive -->
+      <div class="filter-group status-group">
+        <label>Arsip</label>
+
+        <select v-model="selectedArchive">
+          <option value="aktif">Aktif</option>
+          <option value="arsip">Arsip</option>
+          <option value="semua">Semua</option>
+        </select>
       </div>
 
     </div>
@@ -246,18 +249,47 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import type { TripStatus } from '~/types/api'
 import { useTrips } from '~/composables/useTrips'
 import { formatDate, tripStatusClass, tripStatusLabel } from '~/utils/format'
 
 const { trips, meta, loading, error, fetchTrips } = useTrips()
 
 const search = ref('')
-const selectedStatus = ref('')
+const selectedStatus = ref<TripStatus | ''>('')
 const selectedDate = ref('')
+const selectedArchive = ref<'aktif' | 'arsip' | 'semua'>('aktif')
 const page = ref(1)
 
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
 const needLabel = (jenis: string) => (jenis === 'transportasi' ? 'Transportasi' : 'Penginapan')
+
+const currentParams = () => ({
+  page: page.value,
+  tujuan: search.value.trim() || undefined,
+  status: selectedStatus.value || undefined,
+  tanggal: selectedDate.value || undefined,
+  arsip: selectedArchive.value === 'aktif' ? undefined : selectedArchive.value,
+})
+
+const reload = async () => {
+  page.value = 1
+  await fetchTrips({ ...currentParams(), page: 1 }).catch(() => {})
+}
+
+// Pencarian teks di-debounce; filter lain langsung memuat ulang dari server.
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    void reload()
+  }, 400)
+})
+
+watch([selectedStatus, selectedDate, selectedArchive], () => {
+  void reload()
+})
 
 const filteredTrips = computed(() => {
   return trips.value
@@ -274,19 +306,6 @@ const filteredTrips = computed(() => {
       statusLabel: trip.statusLabel ?? tripStatusLabel(trip.status),
       statusClass: tripStatusClass(trip.status),
     }))
-    .filter((trip) => {
-      const query = search.value.toLowerCase()
-      const searchMatch = !query
-        || trip.destination.toLowerCase().includes(query)
-        || trip.keperluan.toLowerCase().includes(query)
-        || trip.type.toLowerCase().includes(query)
-
-      const statusMatch = !selectedStatus.value || trip.status === selectedStatus.value
-      const dateMatch = !selectedDate.value
-        || (trip.startRaw <= selectedDate.value && trip.endRaw >= selectedDate.value)
-
-      return searchMatch && statusMatch && dateMatch
-    })
 })
 
 const totalTrips = computed(() => meta.value?.total ?? trips.value.length)
@@ -295,7 +314,7 @@ const lastPage = computed(() => Math.max(meta.value?.last_page ?? 1, 1))
 const changePage = async (value: number) => {
   if (value < 1 || value > lastPage.value || value === page.value) return
   page.value = value
-  await fetchTrips({ page: value })
+  await fetchTrips(currentParams()).catch(() => {})
 }
 
 onMounted(() => {
@@ -429,7 +448,7 @@ onMounted(() => {
 
   margin: 0 8px;
 
-  fill: #718096;
+  color: #718096;
   flex-shrink: 0;
 }
 

@@ -1,7 +1,7 @@
 <template>
   <div class="atasan-page">
     <div class="breadcrumb">
-      <span>Beranda</span><span>›</span><strong>Dashboard</strong>
+      <span>Beranda</span><AppIcon name="chevron-right" class="crumb-sep" /><strong>Dashboard</strong>
     </div>
 
     <header class="page-header">
@@ -25,10 +25,10 @@
     </div>
 
     <section class="metrics" aria-label="Ringkasan perjalanan tim">
-      <AtasanMetricCard title="Pengajuan Perjalanan Tim" :value="metricValue(metrics.total)" icon="▤" />
-      <AtasanMetricCard title="Menunggu Persetujuan" :value="metricValue(metrics.pending)" icon="◷" />
-      <AtasanMetricCard title="Perjalanan Berlangsung" :value="metricValue(metrics.ongoing)" icon="➤" />
-      <AtasanMetricCard title="Perjalanan Selesai" :value="metricValue(metrics.completed)" icon="✓" />
+      <AtasanMetricCard title="Pengajuan Perjalanan Tim" :value="metricValue(metrics.total)" icon="file-text" />
+      <AtasanMetricCard title="Menunggu Persetujuan" :value="metricValue(metrics.pending)" icon="clock" />
+      <AtasanMetricCard title="Perjalanan Berlangsung" :value="metricValue(metrics.ongoing)" icon="navigation" />
+      <AtasanMetricCard title="Perjalanan Selesai" :value="metricValue(metrics.completed)" icon="check-circle" />
     </section>
 
     <section class="content-grid">
@@ -83,10 +83,10 @@
           <div v-if="loading && decisions.length === 0" class="empty-state">Memuat data keputusan...</div>
           <div v-else-if="decisions.length === 0" class="empty-state">Belum ada keputusan yang dapat ditampilkan.</div>
           <ul v-else class="side-list">
-            <li v-for="trip in decisions" :key="trip.id" class="side-item">
-              <span class="side-title">{{ trip.user?.name ?? '—' }}</span>
-              <span class="side-meta">{{ trip.tujuan }} · {{ formatDate(trip.tanggal_berangkat) }}</span>
-              <span class="status" :class="tripStatusClass(trip.status)">{{ tripStatusLabel(trip.status) }}</span>
+            <li v-for="activity in decisions" :key="activity.id" class="side-item">
+              <NuxtLink :to="`/atasan/perjalanan-tim/${activity.trip_id}`" class="side-title link">{{ activity.title }}</NuxtLink>
+              <span class="side-meta">{{ activity.detail ?? '' }} · {{ formatDate(activity.at) }}</span>
+              <span class="status" :class="decisionToneClass(activity.tone)">{{ decisionToneLabel(activity.tone) }}</span>
             </li>
           </ul>
         </article>
@@ -106,15 +106,40 @@
           </ul>
           <NuxtLink to="/atasan/perjalanan-tim" class="text-link">Buka perjalanan tim</NuxtLink>
         </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <div><h2>Pagu Departemen</h2><p>Periode berjalan · {{ user?.department ?? '—' }}</p></div>
+          </div>
+          <div v-if="myBudget" class="budget-body">
+            <div class="budget-row">
+              <span>Terpakai</span>
+              <strong>{{ formatCurrency(myBudget.terpakai) }}</strong>
+            </div>
+            <div class="budget-row">
+              <span>Sisa</span>
+              <strong :class="myBudget.sisa < 0 ? 'negative' : 'positive'">{{ formatCurrency(myBudget.sisa) }}</strong>
+            </div>
+            <div class="progress" role="progressbar" :aria-valuenow="budgetPercent" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar" :class="{ over: budgetPercent >= 100 }" :style="{ width: `${Math.min(budgetPercent, 100)}%` }" />
+            </div>
+            <span class="budget-meta">{{ formatCurrency(myBudget.pagu) }} pagu · {{ budgetPercent }}% terpakai</span>
+          </div>
+          <div v-else class="empty-state">Belum ada pagu untuk departemen Anda bulan ini.</div>
+        </article>
       </aside>
     </section>
+
+    <DashboardTripCalendar :trip-link="(id) => `/atasan/perjalanan-tim/${id}`" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import type { Trip } from '~/types/api'
+import type { DashboardActivity, Trip } from '~/types/api'
 import { useApprovals } from '~/composables/useApprovals'
+import { useAuth } from '~/composables/useAuth'
+import { useBudgets } from '~/composables/useBudgets'
 import { useDashboard } from '~/composables/useDashboard'
 import { useTrips } from '~/composables/useTrips'
 import { formatCurrency, formatDate, formatDateRange, formatNumber, tripStatusClass, tripStatusLabel } from '~/utils/format'
@@ -135,6 +160,8 @@ interface PendingRequest {
 const period = ref('bulan-ini')
 
 const { summary, loading: dashboardLoading, error: dashboardError, fetchDashboard } = useDashboard()
+const { user } = useAuth()
+const { budgets, fetchBudgets } = useBudgets()
 const { approvals, loading: approvalsLoading, error: approvalsError, fetchApprovals } = useApprovals()
 const { trips, loading: tripsLoading, error: tripsError, fetchTrips } = useTrips()
 
@@ -168,12 +195,32 @@ const pendingRequests = computed<PendingRequest[]>(() => approvals.value.slice(0
   statusClass: tripStatusClass(trip.status),
 })))
 
-const decisions = computed<Trip[]>(() => trips.value
-  .filter((trip) => trip.status === 'disetujui' || trip.status === 'ditolak')
-  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+const decisions = computed<DashboardActivity[]>(() => (summary.value?.aktivitas_terbaru ?? [])
+  .filter((activity) => activity.kind === 'approval')
   .slice(0, 5))
 
+const decisionToneClass = (tone: string) => (tone === 'success' ? 'approved' : 'rejected')
+const decisionToneLabel = (tone: string) => (tone === 'success' ? 'Disetujui' : 'Ditolak')
+
 const ongoingTrips = computed<Trip[]>(() => trips.value.filter((trip) => trip.status === 'berjalan').slice(0, 5))
+
+const budgetPeriode = computed(() => {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+})
+
+const myBudget = computed(() => {
+  const department = user.value?.department
+  if (!department) return null
+  return budgets.value.find((budget) => budget.department === department) ?? null
+})
+
+const budgetPercent = computed(() => {
+  if (!myBudget.value || !myBudget.value.pagu || myBudget.value.pagu <= 0) {
+    return myBudget.value && myBudget.value.terpakai > 0 ? 100 : 0
+  }
+  return Math.round((Number(myBudget.value.terpakai) / Number(myBudget.value.pagu)) * 100)
+})
 
 const loadTrips = async () => {
   const firstPage = await fetchTrips({ page: 1 })
@@ -193,6 +240,7 @@ onMounted(async () => {
     fetchDashboard(),
     fetchApprovals(1),
     loadTrips(),
+    fetchBudgets(budgetPeriode.value),
   ])
 })
 </script>
@@ -229,6 +277,17 @@ td { padding: 13px 9px; border-bottom: 1px solid #edf0f4; color: var(--text); fo
 .side-item { display: grid; gap: 4px; padding-bottom: 11px; border-bottom: 1px solid #edf0f4; }
 .side-item:last-child { padding-bottom: 0; border-bottom: none; }
 .side-title { color: var(--text); font-size: 12px; font-weight: 600; }
+.side-title.link { color: var(--primary); text-decoration: none; }
+.side-title.link:hover { text-decoration: underline; }
+.budget-body { display: grid; gap: 8px; }
+.budget-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--text-muted); }
+.budget-row strong { color: var(--text); font-size: 13px; }
+.budget-row strong.negative { color: #b42318; }
+.budget-row strong.positive { color: #15803d; }
+.progress { height: 8px; border-radius: 999px; background: #eef1f5; overflow: hidden; }
+.progress-bar { height: 100%; border-radius: 999px; background: var(--primary); }
+.progress-bar.over { background: #dc2626; }
+.budget-meta { color: var(--text-muted); font-size: 10px; }
 .side-meta { color: var(--text-muted); font-size: 10px; }
 .side-item .status { justify-self: start; }
 .data-error { display: flex; flex-direction: column; gap: 5px; margin-bottom: 4px; padding: 14px 16px; border: 1px solid #f3c7c7; border-radius: 8px; background: #fff7f7; color: #b42318; font-size: 12px; line-height: 1.5; }

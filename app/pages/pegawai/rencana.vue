@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/pegawai/dashboard">Pegawai</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Rencana Perjalanan</strong>
     </div>
 

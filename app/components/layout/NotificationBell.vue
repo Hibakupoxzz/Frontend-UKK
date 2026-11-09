@@ -8,11 +8,7 @@
       :aria-expanded="open"
       @click="togglePanel"
     >
-      <svg viewBox="0 0 24 24" class="bell-icon" aria-hidden="true">
-        <path
-          d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6v-5a7 7 0 0 0-5.5-6.83V3a1.5 1.5 0 0 0-3 0v1.17A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"
-        />
-      </svg>
+      <AppIcon name="bell" class="bell-icon" />
 
       <span v-if="unreadCount > 0" class="bell-badge" aria-hidden="true">
         {{ unreadCount > 9 ? '9+' : unreadCount }}
@@ -271,8 +267,6 @@ onBeforeUnmount(() => {
 .bell-icon {
   width: 15px;
   height: 15px;
-
-  fill: currentColor;
 }
 
 .bell-badge {

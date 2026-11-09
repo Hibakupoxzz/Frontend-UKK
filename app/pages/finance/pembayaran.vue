@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/finance/dashboard">Finance</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Pembayaran</strong>
     </div>
 
@@ -22,28 +22,28 @@
     <!-- Stats -->
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-icon blue">💰</div>
+        <div class="stat-icon blue"><AppIcon name="wallet" /></div>
         <div>
           <p>Total Diajukan</p>
           <h2>{{ formatCurrency(stats.total) }}</h2>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon orange">⏳</div>
+        <div class="stat-icon orange"><AppIcon name="hourglass" /></div>
         <div>
           <p>Menunggu Verifikasi</p>
           <h2>{{ formatCurrency(stats.menunggu) }}</h2>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon cyan">▣</div>
+        <div class="stat-icon cyan"><AppIcon name="receipt" /></div>
         <div>
           <p>Siap Dibayar</p>
           <h2>{{ formatCurrency(stats.siap) }}</h2>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon green">✓</div>
+        <div class="stat-icon green"><AppIcon name="check-circle" /></div>
         <div>
           <p>Sudah Dibayar</p>
           <h2>{{ formatCurrency(stats.dibayar) }}</h2>
@@ -56,7 +56,7 @@
       <div class="filter-group search-group">
         <label>Cari Pegawai / Tujuan</label>
         <div class="search-input">
-          <svg viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 0 4.08 11.56l4.43 4.43 1.41-1.41-4.43-4.43A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
+          <AppIcon name="search" />
           <input v-model="search" type="text" placeholder="Cari..." />
         </div>
       </div>
@@ -159,7 +159,7 @@
         </div>
         <div class="detail-header-actions">
           <span class="status-badge" :class="`status-${selected.status}`">{{ selected.status_label }}</span>
-          <button type="button" class="close-button" aria-label="Tutup" @click="closeDetail">×</button>
+          <button type="button" class="close-button" aria-label="Tutup" @click="closeDetail"><AppIcon name="x" /></button>
         </div>
       </div>
 
@@ -680,7 +680,7 @@ onMounted(reload)
   height: 31px; display: flex; align-items: center;
   border: 1px solid #dce2eb; border-radius: 6px; background: var(--white);
 }
-.search-input svg { width: 14px; height: 14px; margin: 0 8px; fill: #718096; flex-shrink: 0; }
+.search-input svg { width: 14px; height: 14px; margin: 0 8px; color: #718096; flex-shrink: 0; }
 .search-input input,
 .filter-group input,
 .filter-group select {

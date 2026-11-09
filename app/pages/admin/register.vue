@@ -25,7 +25,7 @@
     <section class="form-section">
       <!-- BACK TO DASHBOARD -->
       <NuxtLink to="/admin/dashboard" class="back-home">
-        <span class="back-arrow">←</span>
+        <AppIcon name="arrow-left" class="back-arrow" />
         Kembali ke Dashboard
       </NuxtLink>
 
@@ -115,7 +115,7 @@
                 :aria-label="showPassword ? 'Sembunyikan password' : 'Tampilkan password'"
                 @click="showPassword = !showPassword"
               >
-                {{ showPassword ? '◉' : '◌' }}
+                <AppIcon :name="showPassword ? 'eye-off' : 'eye'" />
               </button>
             </div>
 
@@ -145,7 +145,7 @@
                 :aria-label="showConfirmPassword ? 'Sembunyikan password' : 'Tampilkan password'"
                 @click="showConfirmPassword = !showConfirmPassword"
               >
-                {{ showConfirmPassword ? '◉' : '◌' }}
+                <AppIcon :name="showConfirmPassword ? 'eye-off' : 'eye'" />
               </button>
             </div>
           </div>
@@ -171,22 +171,11 @@
             Daftar
           </button>
 
-          <!-- DIVIDER -->
-          <div class="divider">
-            <span></span>
-            <p>atau daftar dengan</p>
-            <span></span>
-          </div>
-
-          <!-- GOOGLE -->
-          <button
-            type="button"
-            class="google-button"
-            @click="registerWithGoogle"
-          >
-            <strong>G</strong>
-            Daftar dengan Google
-          </button>
+          <!-- ADMIN NOTE -->
+          <p class="admin-note">
+            Pendaftaran akun baru diproses oleh administrator.
+            Jika Anda belum memiliki akun, silakan hubungi administrator instansi Anda.
+          </p>
 
           <!-- LOGIN -->
           <p class="login-text">
@@ -196,6 +185,67 @@
         </form>
       </div>
     </section>
+
+    <!-- MODAL SYARAT & KETENTUAN -->
+    <div
+      v-if="showTermsModal"
+      class="terms-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Syarat dan Ketentuan"
+      @click.self="showTermsModal = false"
+    >
+      <div class="terms-modal">
+        <div class="terms-header">
+          <h2>Syarat &amp; Ketentuan</h2>
+          <button
+            type="button"
+            class="terms-close"
+            aria-label="Tutup Syarat dan Ketentuan"
+            @click="showTermsModal = false"
+          >
+            <AppIcon name="x" />
+          </button>
+        </div>
+
+        <div class="terms-body">
+          <p>
+            Akun EduAbsen Travel App dibuat dan dikelola oleh administrator
+            instansi Anda. Dengan mencentang persetujuan ini, Anda menyatakan bahwa:
+          </p>
+          <ol>
+            <li>
+              Data yang Anda isi (nama, email, nomor HP) adalah benar dan milik Anda.
+            </li>
+            <li>
+              Anda akan menjaga kerahasiaan kata sandi dan tidak membagikan akun
+              kepada orang lain.
+            </li>
+            <li>
+              Pengajuan perjalanan dinas, pengeluaran, dan bukti transaksi yang Anda
+              catat adalah benar dan dapat dipertanggungjawabkan.
+            </li>
+            <li>
+              Administrator dapat menonaktifkan akun yang menyalahgunakan sistem.
+            </li>
+          </ol>
+          <p>
+            Pendaftaran akun baru dilakukan oleh administrator. Jika Anda belum
+            memiliki akun, silakan hubungi administrator instansi Anda.
+          </p>
+        </div>
+
+        <div class="terms-footer">
+          <button
+            type="button"
+            class="terms-agree"
+            @click="acceptTerms"
+          >
+            Saya Mengerti
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -218,6 +268,7 @@ const form = reactive({
 
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
+const showTermsModal = ref(false)
 
 const register = () => {
   if (form.password.length < 8) {
@@ -247,12 +298,13 @@ const register = () => {
   alert('Form registrasi valid. Integrasi backend belum dilakukan.')
 }
 
-const registerWithGoogle = () => {
-  alert('Fitur registrasi Google belum diintegrasikan.')
+const showTerms = () => {
+  showTermsModal.value = true
 }
 
-const showTerms = () => {
-  alert('Syarat & Ketentuan belum tersedia.')
+const acceptTerms = () => {
+  form.agreement = true
+  showTermsModal.value = false
 }
 </script>
 
@@ -352,8 +404,8 @@ const showTerms = () => {
 }
 
 .back-arrow {
-  font-size: 22px;
-  line-height: 1;
+  width: 18px;
+  height: 18px;
 }
 
 /* HEADER */
@@ -492,52 +544,17 @@ const showTerms = () => {
   background: #2460df;
 }
 
-/* DIVIDER */
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 16px 0;
-}
-
-.divider span {
-  flex: 1;
-  height: 1px;
-  background: #e5e9ef;
-}
-
-.divider p {
-  margin: 0;
-  color: #8b96a7;
+/* ADMIN NOTE */
+.admin-note {
+  margin: 14px 0 0;
+  padding: 9px 11px;
+  border: 1px dashed #dce2eb;
+  border-radius: 7px;
+  background: #fafbfc;
+  color: #8792a5;
   font-size: 11px;
-  white-space: nowrap;
-}
-
-/* GOOGLE BUTTON */
-.google-button {
-  width: 100%;
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  border: 1px solid #dce3ec;
-  border-radius: 6px;
-  background: #fff;
-  color: #344054;
-  font-family: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.google-button:hover {
-  background: #f8fafc;
-}
-
-.google-button strong {
-  color: #4285f4;
-  font-size: 17px;
+  line-height: 1.6;
+  text-align: center;
 }
 
 /* LOGIN LINK */
@@ -628,8 +645,8 @@ const showTerms = () => {
 
   .input-hint,
   .agreement,
-  .login-text,
-  .divider p {
+  .admin-note,
+  .login-text {
     font-size: 13px;
   }
 
@@ -654,5 +671,104 @@ const showTerms = () => {
   .form-header h1 {
     font-size: 22px;
   }
+}
+
+/* MODAL SYARAT & KETENTUAN */
+.terms-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(16, 25, 45, 0.55);
+}
+
+.terms-modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: calc(100vh - 60px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(16, 25, 45, 0.3);
+  overflow: hidden;
+}
+
+.terms-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.terms-header h2 {
+  margin: 0;
+  color: #263248;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.terms-close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #f1f3f6;
+  color: #667085;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.terms-close:hover {
+  background: #e4e8ee;
+}
+
+.terms-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.terms-body p {
+  margin: 0 0 10px;
+}
+
+.terms-body ol {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+
+.terms-body li + li {
+  margin-top: 6px;
+}
+
+.terms-footer {
+  padding: 14px 20px;
+  border-top: 1px solid #edf0f5;
+}
+
+.terms-agree {
+  width: 100%;
+  min-height: 42px;
+  border: none;
+  border-radius: 7px;
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.terms-agree:hover {
+  opacity: 0.9;
 }
 </style>

@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/hrd/dashboard">HRD</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Laporan</strong>
     </div>
 
@@ -18,7 +18,7 @@
     <div class="summary-grid">
       <div class="summary-card">
         <div class="summary-icon blue">
-          ✈
+          <AppIcon name="plane" />
         </div>
         <div>
           <p>Total Perjalanan</p>
@@ -27,7 +27,7 @@
       </div>
       <div class="summary-card">
         <div class="summary-icon green">
-          ▤
+          <AppIcon name="wallet" />
         </div>
         <div>
           <p>Total Biaya</p>
@@ -36,7 +36,7 @@
       </div>
       <div class="summary-card">
         <div class="summary-icon cyan">
-          ▤
+          <AppIcon name="calendar" />
         </div>
         <div>
           <p>Perjalanan Bulan Ini</p>
@@ -45,7 +45,7 @@
       </div>
       <div class="summary-card">
         <div class="summary-icon orange">
-          ││
+          <AppIcon name="check-circle" />
         </div>
         <div>
           <p>Selesai Bulan Ini</p>
@@ -73,7 +73,8 @@
         :disabled="exporting || loading"
         @click="exportReport('pdf')"
       >
-        {{ exporting ? 'Menyiapkan...' : '↓ Ekspor PDF' }}
+        <AppIcon name="download" />
+        {{ exporting ? 'Menyiapkan...' : 'Ekspor PDF' }}
       </button>
 
       <button
@@ -82,7 +83,8 @@
         :disabled="exporting || loading"
         @click="exportReport('xlsx')"
       >
-        ↓ Ekspor Excel
+        <AppIcon name="download" />
+        Ekspor Excel
       </button>
     </div>
 
@@ -150,7 +152,7 @@
               <td>{{ formatCurrency(trip.total_biaya) }}</td>
               <td>
                 <div class="table-actions">
-                  <NuxtLink :to="`/hrd/detail-perjalanan/${trip.id}`" title="Lihat">◉</NuxtLink>
+                  <NuxtLink :to="`/hrd/detail-perjalanan/${trip.id}`" title="Lihat"><AppIcon name="eye" /></NuxtLink>
                 </div>
               </td>
             </tr>
@@ -193,7 +195,7 @@
           </dl>
 
           <div class="report-card-actions">
-            <NuxtLink :to="`/hrd/detail-perjalanan/${trip.id}`">◉ Detail</NuxtLink>
+            <NuxtLink :to="`/hrd/detail-perjalanan/${trip.id}`"><AppIcon name="eye" /> Detail</NuxtLink>
           </div>
         </article>
         <p v-if="reportTrips.length === 0" class="empty-state">Belum ada perjalanan pada periode ini.</p>
@@ -237,13 +239,14 @@ const departmentOptions = computed(() => {
     if (trip.user?.department) values.add(trip.user.department)
   }
 
+  // Pertahankan pilihan aktif walau server memfilter baris yang tampil.
+  if (selectedDepartment.value) values.add(selectedDepartment.value)
+
   return Array.from(values).sort((a, b) => a.localeCompare(b))
 })
 
-const reportTrips = computed(() => {
-  if (!selectedDepartment.value) return trips.value
-  return trips.value.filter((trip) => trip.user?.department === selectedDepartment.value)
-})
+// Departemen difilter di server.
+const reportTrips = computed(() => trips.value)
 
 const totalTrips = computed(() => reportTrips.value.length)
 const totalBiaya = computed(() => reportTrips.value.reduce((sum, trip) => sum + Number(trip.total_biaya || 0), 0))
@@ -286,6 +289,7 @@ const monthlyData = computed(() => {
 const queryParams = () => ({
   dari: `${selectedYear.value}-01-01`,
   sampai: `${selectedYear.value}-12-31`,
+  department: selectedDepartment.value || undefined,
 })
 
 const load = async () => {
@@ -306,6 +310,10 @@ const exportReport = async (format: 'pdf' | 'xlsx') => {
 }
 
 watch(selectedYear, () => {
+  load().catch(() => {})
+})
+
+watch(selectedDepartment, () => {
   load().catch(() => {})
 })
 
@@ -399,10 +407,12 @@ onMounted(() => {
 
 .export-button {
   height: 30px; padding: 0 14px;
+  display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--primary); border-radius: 6px;
   background: var(--primary); color: var(--white);
   font-family: inherit; font-size: 9px; font-weight: 600; cursor: pointer;
 }
+.export-button svg { width: 13px; height: 13px; }
 .export-button:disabled { cursor: not-allowed; opacity: 0.6; }
 
 .data-error { margin-bottom: 16px; padding: 11px 14px; border: 1px solid #f4c7c7; border-radius: 8px; background: #fff5f5; color: #b42318; font-size: 11px; }
@@ -485,7 +495,7 @@ td strong { display: block; color: var(--text); font-size: 8px; line-height: 1.3
 
 .report-card-actions button:last-child { background: var(--primary); color: var(--white); }
 
-.report-card-actions a { display: flex; align-items: center; justify-content: center; min-height: 40px; border: 1px solid var(--primary); border-radius: 7px; background: var(--primary); color: var(--white); font-size: 12px; font-weight: 600; text-decoration: none; }
+.report-card-actions a { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 1px solid var(--primary); border-radius: 7px; background: var(--primary); color: var(--white); font-size: 12px; font-weight: 600; text-decoration: none; }
 
 /* RESPONSIVE */
 @media (max-width: 1000px) {

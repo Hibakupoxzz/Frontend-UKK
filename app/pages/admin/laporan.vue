@@ -4,7 +4,7 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Laporan</strong>
     </div>
 
@@ -35,7 +35,7 @@
         :disabled="exporting || loading"
         @click="exportReport('pdf')"
       >
-        ↓
+        <AppIcon name="download" />
         {{ exporting ? 'Menyiapkan...' : 'Ekspor PDF' }}
       </button>
 
@@ -45,7 +45,7 @@
         :disabled="exporting || loading"
         @click="exportReport('xlsx')"
       >
-        ↓
+        <AppIcon name="download" />
         Ekspor Excel
       </button>
 
@@ -59,7 +59,7 @@
 
       <div class="summary-card">
         <div class="summary-icon blue">
-          ✈
+          <AppIcon name="plane" />
         </div>
 
         <div>
@@ -70,7 +70,7 @@
 
       <div class="summary-card">
         <div class="summary-icon green">
-          ▤
+          <AppIcon name="wallet" />
         </div>
 
         <div>
@@ -81,7 +81,7 @@
 
       <div class="summary-card">
         <div class="summary-icon cyan">
-          ▤
+          <AppIcon name="trending-up" />
         </div>
 
         <div>
@@ -92,7 +92,7 @@
 
       <div class="summary-card">
         <div class="summary-icon orange">
-          ││
+          <AppIcon name="calendar" />
         </div>
 
         <div>
@@ -140,6 +140,68 @@
 
         <div class="chart-footer">
           <span>{{ expenseFooter || 'Total pengeluaran: Rp 0' }}</span>
+        </div>
+
+      </section>
+
+      <!-- Tren Estimasi vs Realisasi -->
+      <section class="expense-card">
+
+        <div class="section-header">
+          <h2>Tren Estimasi vs Realisasi — Tahun {{ selectedYear }}</h2>
+        </div>
+
+        <div v-if="!analytics" class="chart-empty">
+          Memuat tren belanja...
+        </div>
+        <div v-else class="trend-chart">
+          <div
+            v-for="item in analytics.monthly"
+            :key="item.month"
+            class="trend-item"
+          >
+            <div class="trend-bars">
+              <div
+                class="trend-bar estimate"
+                :style="{ height: `${trendHeight(item.estimasi)}%` }"
+                :title="`Estimasi: ${formatCurrency(item.estimasi)}`"
+              ></div>
+              <div
+                class="trend-bar realization"
+                :style="{ height: `${trendHeight(item.realisasi)}%` }"
+                :title="`Realisasi: ${formatCurrency(item.realisasi)}`"
+              ></div>
+            </div>
+            <span>{{ item.label }}</span>
+          </div>
+        </div>
+
+        <div class="trend-legend">
+          <span><i class="dot estimate" />Estimasi</span>
+          <span><i class="dot realization" />Realisasi</span>
+        </div>
+
+        <div v-if="analytics" class="trend-grid">
+          <div>
+            <h3>Belanja per Departemen</h3>
+            <p v-if="analytics.departments.length === 0" class="empty-text">Belum ada data.</p>
+            <ul v-else class="trend-list">
+              <li v-for="dept in analytics.departments" :key="dept.department">
+                <strong>{{ dept.department }}</strong>
+                <span>{{ dept.trips }} perjalanan · {{ formatCurrency(dept.realisasi) }} / {{ formatCurrencyOrDash(dept.estimasi || null) }}</span>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h3>Tujuan Teratas</h3>
+            <p v-if="analytics.destinations.length === 0" class="empty-text">Belum ada data.</p>
+            <ul v-else class="trend-list">
+              <li v-for="dest in analytics.destinations" :key="dest.tujuan">
+                <strong>{{ dest.tujuan }}</strong>
+                <span>{{ dest.trips }} perjalanan · {{ formatCurrency(dest.realisasi) }}</span>
+              </li>
+            </ul>
+          </div>
         </div>
 
       </section>
@@ -254,7 +316,7 @@ import { useReports } from '~/composables/useReports'
 import { apiErrorMessage } from '~/composables/useApi'
 import { formatCurrency } from '~/utils/format'
 
-const { tripReport, expenseReport, loading, error, fetchTripReport, fetchExpenseReport, downloadReport } = useReports()
+const { tripReport, expenseReport, analytics, loading, error, fetchTripReport, fetchExpenseReport, fetchAnalytics, downloadReport } = useReports()
 
 const currentYear = new Date().getFullYear()
 const yearOptions = [currentYear, currentYear - 1, currentYear - 2]
@@ -323,13 +385,13 @@ const departmentOptions = computed(() => {
   for (const trip of allTrips.value) {
     if (trip.department && trip.department !== '—') values.add(trip.department)
   }
+  // Pertahankan pilihan aktif walau server memfilter baris yang tampil.
+  if (selectedDepartment.value) values.add(selectedDepartment.value)
   return Array.from(values).sort((a, b) => a.localeCompare(b))
 })
 
-const reportTrips = computed(() => {
-  if (!selectedDepartment.value) return allTrips.value
-  return allTrips.value.filter((trip) => trip.department === selectedDepartment.value)
-})
+// Departemen difilter di server; tidak ada lagi filter klien di sini.
+const reportTrips = computed(() => allTrips.value)
 
 const departmentsByEmployee = computed(() => {
   const map = new Map<string, string>()
@@ -352,7 +414,6 @@ const expenseRows = computed(() => {
         monthKey: `${year}-${month}-${day}`,
       }
     })
-    .filter((row) => !selectedDepartment.value || row.department === selectedDepartment.value)
 })
 
 const totalTrips = computed(() => reportTrips.value.length)
@@ -390,13 +451,25 @@ const expenseFooter = computed(() => expenseReport.value?.footer ?? '')
 const queryParams = () => ({
   dari: `${selectedYear.value}-01-01`,
   sampai: `${selectedYear.value}-12-31`,
+  department: selectedDepartment.value || undefined,
 })
 
 const load = async () => {
   await Promise.all([
     fetchTripReport(queryParams()),
     fetchExpenseReport(queryParams()),
+    fetchAnalytics(selectedYear.value),
   ])
+}
+
+const trendMax = computed(() => {
+  const values = (analytics.value?.monthly ?? []).flatMap((item) => [item.estimasi, item.realisasi])
+  return values.reduce((highest, value) => Math.max(highest, value), 0)
+})
+
+const trendHeight = (value: number) => {
+  if (trendMax.value <= 0) return 0
+  return Math.max(value > 0 ? 6 : 0, Math.round((value / trendMax.value) * 100))
 }
 
 const exportReport = async (format: 'pdf' | 'xlsx') => {
@@ -413,6 +486,10 @@ const exportReport = async (format: 'pdf' | 'xlsx') => {
 }
 
 watch(selectedYear, () => {
+  load().catch(() => {})
+})
+
+watch(selectedDepartment, () => {
   load().catch(() => {})
 })
 
@@ -552,6 +629,11 @@ onMounted(() => {
 
 .export-button:hover {
   opacity: 0.9;
+}
+
+.export-button svg {
+  width: 13px;
+  height: 13px;
 }
 
 .export-button:disabled {
@@ -745,6 +827,122 @@ onMounted(() => {
   border-radius: 4px 4px 0 0;
 
   background: var(--primary);
+}
+
+.trend-chart {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.trend-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trend-item span {
+  font-size: 8px;
+  color: #7b8799;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.trend-bars {
+  width: 100%;
+  height: 130px;
+
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+}
+
+.trend-bar {
+  width: 12px;
+  max-width: 40%;
+
+  border-radius: 3px 3px 0 0;
+}
+
+.trend-bar.estimate { background: #c7d6fe; }
+.trend-bar.realization { background: var(--primary); }
+
+.trend-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot.estimate { background: #c7d6fe; }
+.dot.realization { background: var(--primary); }
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.trend-grid h3 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trend-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.trend-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eef1f5;
+  font-size: 9px;
+}
+
+.trend-list li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.trend-list strong {
+  color: var(--text);
+  font-size: 10px;
+}
+
+.trend-list span {
+  color: #7b8799;
+  text-align: right;
+}
+
+.empty-text {
+  color: #8792a5;
+  font-size: 9px;
 }
 
 .chart-item span {
@@ -1164,6 +1362,15 @@ td:nth-child(5) {
 
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trend-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trend-chart {
+    overflow-x: auto;
+    grid-template-columns: repeat(12, minmax(44px, 1fr));
   }
 }
 

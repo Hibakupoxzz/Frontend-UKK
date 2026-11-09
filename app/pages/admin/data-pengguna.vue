@@ -3,7 +3,7 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Data Pengguna</strong>
     </div>
 
@@ -25,7 +25,7 @@
       <div class="filter-group search-group">
         <label>Cari Nama / Email</label>
         <div class="search-input">
-          <svg viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 0 4.08 11.56l4.43 4.43 1.41-1.41-4.43-4.43A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
+          <AppIcon name="search" />
           <input v-model="search" type="text" placeholder="Cari pengguna..." />
         </div>
       </div>
@@ -94,6 +94,15 @@
                 <div class="row-actions">
                   <button class="detail-button" type="button" @click="openEdit(item.raw)">Edit</button>
                   <button
+                    class="detail-button"
+                    type="button"
+                    :disabled="item.id === currentUserId"
+                    :title="item.id === currentUserId ? 'Gunakan Keamanan Akun untuk password sendiri' : 'Reset password pengguna'"
+                    @click="openReset(item.raw)"
+                  >
+                    Reset
+                  </button>
+                  <button
                     class="delete-button"
                     type="button"
                     :disabled="item.id === currentUserId"
@@ -137,6 +146,14 @@
           <div class="row-actions">
             <button class="detail-button block" type="button" @click="openEdit(item.raw)">Edit</button>
             <button
+              class="detail-button block"
+              type="button"
+              :disabled="item.id === currentUserId"
+              @click="openReset(item.raw)"
+            >
+              Reset
+            </button>
+            <button
               class="delete-button block"
               type="button"
               :disabled="item.id === currentUserId"
@@ -175,7 +192,7 @@
       <div class="modal-card" role="dialog" aria-modal="true" :aria-label="editingId ? 'Edit pengguna' : 'Tambah pengguna'">
         <div class="modal-header">
           <h2>{{ editingId ? 'Edit Pengguna' : 'Tambah Pengguna' }}</h2>
-          <button class="close-button" type="button" aria-label="Tutup" @click="closeForm">×</button>
+          <button class="close-button" type="button" aria-label="Tutup" @click="closeForm"><AppIcon name="x" /></button>
         </div>
 
         <form @submit.prevent="submitForm">
@@ -259,6 +276,56 @@
         </form>
       </div>
     </div>
+
+    <!-- Reset Password Modal -->
+    <div v-if="showReset" class="modal-backdrop" @click.self="closeReset">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-label="Reset password pengguna">
+        <div class="modal-header">
+          <h2>Reset Password</h2>
+          <button class="close-button" type="button" aria-label="Tutup" @click="closeReset"><AppIcon name="x" /></button>
+        </div>
+
+        <p class="modal-note">
+          Password baru untuk <strong>{{ resetTarget?.name }}</strong> ({{ resetTarget?.email }}).
+          Pengguna akan dipaksa login ulang di semua perangkat.
+        </p>
+
+        <form @submit.prevent="submitReset">
+          <div v-if="resetError" class="data-error" role="alert">{{ resetError }}</div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="reset-password">Password Baru</label>
+              <input
+                id="reset-password"
+                v-model="resetFields.password"
+                type="password"
+                autocomplete="new-password"
+                placeholder="Minimal 8 karakter"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="reset-password-confirm">Konfirmasi Password</label>
+              <input
+                id="reset-password-confirm"
+                v-model="resetFields.password_confirmation"
+                type="password"
+                autocomplete="new-password"
+                placeholder="Ulangi password baru"
+              />
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button class="cancel-button" type="button" :disabled="resetting" @click="closeReset">Batal</button>
+            <button class="save-button" type="submit" :disabled="resetting">
+              {{ resetting ? 'Menyimpan...' : 'Reset Password' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -269,7 +336,7 @@ import { useUsers } from '~/composables/useUsers'
 import { useApi, apiErrorMessage } from '~/composables/useApi'
 import { useAuth } from '~/composables/useAuth'
 
-const { users, meta, loading, error, fetchUsers, createUser, updateUser, deleteUser } = useUsers()
+const { users, meta, loading, error, fetchUsers, createUser, updateUser, deleteUser, resetPassword } = useUsers()
 const { get } = useApi()
 const { user: sessionUser, setUser } = useAuth()
 
@@ -519,6 +586,60 @@ const removeUser = async (user: ApiUser) => {
   }
 }
 
+const showReset = ref(false)
+const resetting = ref(false)
+const resetError = ref('')
+const resetTarget = ref<ApiUser | null>(null)
+const resetFields = reactive({
+  password: '',
+  password_confirmation: '',
+})
+
+const openReset = (user: ApiUser) => {
+  if (user.id === currentUserId.value) return
+
+  resetTarget.value = user
+  resetFields.password = ''
+  resetFields.password_confirmation = ''
+  resetError.value = ''
+  showReset.value = true
+}
+
+const closeReset = () => {
+  showReset.value = false
+  resetTarget.value = null
+  resetError.value = ''
+}
+
+const submitReset = async () => {
+  if (!resetTarget.value) return
+
+  resetError.value = ''
+
+  if (resetFields.password.length < 8) {
+    resetError.value = 'Password baru minimal 8 karakter.'
+    return
+  }
+
+  if (resetFields.password !== resetFields.password_confirmation) {
+    resetError.value = 'Konfirmasi password tidak cocok.'
+    return
+  }
+
+  resetting.value = true
+
+  try {
+    await resetPassword(resetTarget.value.id, resetFields.password, resetFields.password_confirmation)
+    message.value = `Password "${resetTarget.value.name}" berhasil direset.`
+    closeReset()
+    await fetchList()
+  } catch (err) {
+    resetError.value = apiErrorMessage(err, 'Gagal mereset password.')
+  } finally {
+    resetting.value = false
+  }
+}
+
 onMounted(async () => {
   await fetchList()
   await loadAtasanOptions()
@@ -600,7 +721,7 @@ onMounted(async () => {
   border-radius: 6px;
   background: var(--white);
 }
-.search-input svg { width: 14px; height: 14px; margin: 0 8px; fill: #718096; flex-shrink: 0; }
+.search-input svg { width: 14px; height: 14px; margin: 0 8px; color: #718096; flex-shrink: 0; }
 .search-input input { border: none; }
 .filter-group select,
 .filter-group input {

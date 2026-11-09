@@ -1,6 +1,6 @@
 <template>
   <div class="atasan-page">
-    <div class="breadcrumb"><NuxtLink to="/atasan/dashboard">Dashboard</NuxtLink><span>›</span><strong>Laporan</strong></div>
+    <div class="breadcrumb"><NuxtLink to="/atasan/dashboard">Dashboard</NuxtLink><AppIcon name="chevron-right" class="crumb-sep" /><strong>Laporan</strong></div>
 
     <header class="page-header">
       <div><h1>Laporan Perjalanan Tim</h1><p>Ringkasan perjalanan dan biaya tim Anda.</p></div>
@@ -22,9 +22,9 @@
     </div>
 
     <section class="metrics">
-      <AtasanMetricCard title="Total Perjalanan" :value="metricValue(metrics.total)" icon="▤" />
-      <AtasanMetricCard title="Perjalanan Selesai" :value="metricValue(metrics.completed)" icon="✓" />
-      <AtasanMetricCard title="Perjalanan Berlangsung" :value="metricValue(metrics.ongoing)" icon="➤" />
+      <AtasanMetricCard title="Total Perjalanan" :value="metricValue(metrics.total)" icon="route" />
+      <AtasanMetricCard title="Perjalanan Selesai" :value="metricValue(metrics.completed)" icon="check-circle" />
+      <AtasanMetricCard title="Perjalanan Berlangsung" :value="metricValue(metrics.ongoing)" icon="navigation" />
       <AtasanMetricCard title="Total Biaya" :value="formatCurrency(metrics.totalBiaya)" icon="Rp" />
     </section>
 
@@ -131,6 +131,8 @@ const search = ref('')
 const exporting = ref(false)
 const exportError = ref('')
 
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
 const loading = computed(() => tripsLoading.value || dashboardLoading.value)
 const error = computed(() => tripsError.value ?? dashboardError.value ?? '')
 
@@ -147,12 +149,7 @@ const reportTrips = computed<ReportTrip[]>(() => trips.value.map((trip) => ({
   rawStatus: trip.status,
 })))
 
-const filteredTrips = computed(() => reportTrips.value.filter((trip) => {
-  const query = search.value.toLocaleLowerCase()
-  const searchMatch = !query || `${trip.employee} ${trip.destination}`.toLocaleLowerCase().includes(query)
-  const statusMatch = !status.value || trip.rawStatus === status.value
-  return searchMatch && statusMatch
-}))
+const filteredTrips = computed(() => reportTrips.value)
 
 const metrics = computed(() => ({
   total: summary.value?.total_perjalanan ?? reportTrips.value.length,
@@ -198,7 +195,11 @@ const monthlyCounts = computed(() => {
   }))
 })
 
-const queryParams = () => ({ ...periodRange(period.value) })
+const queryParams = () => ({
+  ...periodRange(period.value),
+  q: search.value.trim() || undefined,
+  status: (status.value || undefined) as TripStatus | undefined,
+})
 
 const load = async () => {
   await Promise.all([
@@ -222,6 +223,17 @@ const handleExport = async () => {
 
 watch(period, () => {
   load().catch(() => {})
+})
+
+watch(status, () => {
+  load().catch(() => {})
+})
+
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    load().catch(() => {})
+  }, 400)
 })
 
 onMounted(() => {

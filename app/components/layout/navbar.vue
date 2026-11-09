@@ -10,9 +10,7 @@
         :aria-expanded="sidebarOpen"
         @click="$emit('toggle-sidebar')"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 6h18v2H3V6Zm0 5h18v2H3v-2Zm0 5h18v2H3v-2Z" />
-        </svg>
+        <AppIcon name="menu" />
       </button>
 
       <ClientOnly>
@@ -73,9 +71,7 @@
               @click="handleLogout"
               aria-label="Keluar"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M17 7l-5 5 5 5M12 2v20M9 12h13" />
-              </svg>
+              <AppIcon name="log-out" />
             </button>
           </div>
         </template>
@@ -168,8 +164,6 @@ onMounted(() => {
 .menu-toggle svg {
   width: 20px;
   height: 20px;
-
-  fill: currentColor;
 }
 
 .menu-toggle:hover {

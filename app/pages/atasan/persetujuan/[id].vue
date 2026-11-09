@@ -1,8 +1,8 @@
 <template>
   <div class="atasan-page">
     <div class="breadcrumb">
-      <NuxtLink to="/atasan/dashboard">Dashboard</NuxtLink><span>›</span>
-      <NuxtLink to="/atasan/persetujuan">Persetujuan</NuxtLink><span>›</span>
+      <NuxtLink to="/atasan/dashboard">Dashboard</NuxtLink><AppIcon name="chevron-right" class="crumb-sep" />
+      <NuxtLink to="/atasan/persetujuan">Persetujuan</NuxtLink><AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Detail Pengajuan</strong>
     </div>
 
@@ -15,6 +15,10 @@
       <span v-if="trip" class="status" :class="tripStatusClass(trip.status)">{{ tripStatusLabel(trip.status) }}</span>
       <span v-else class="status">Status belum tersedia</span>
     </header>
+
+    <p v-if="trip && trip.status === 'diajukan'" class="level-note" role="status">
+      {{ trip.approval_level_label ?? 'Menunggu persetujuan atasan' }} — setelah disetujui atasan, pengajuan diteruskan ke HRD untuk keputusan final.
+    </p>
 
     <div v-if="error" class="data-error" role="alert">
       <strong>Data gagal dimuat</strong>
@@ -112,7 +116,7 @@
           :disabled="!canDecide || submitting"
         ></textarea>
         <p v-if="decisionError" class="decision-error" role="alert">{{ decisionError }}</p>
-        <p v-else-if="!canDecide" class="decision-note">Pengajuan ini sudah diproses sehingga keputusan tidak dapat diubah lagi.</p>
+        <p v-else-if="!canDecide" class="decision-note">Pengajuan ini sudah diproses atau sudah diteruskan ke HRD sehingga keputusan tidak dapat diubah lagi.</p>
         <p v-else class="decision-note">Catatan wajib diisi saat menolak pengajuan.</p>
         <div class="actions">
           <button type="button" class="reject-button" :disabled="!canDecide || submitting" @click="handleReject">
@@ -149,7 +153,9 @@ const decisionError = ref<string | null>(null)
 const { fetchTrip, loading, error } = useTrips()
 const { approve, reject } = useApprovals()
 
-const canDecide = computed(() => trip.value?.status === 'diajukan')
+const canDecide = computed(
+  () => trip.value?.status === 'diajukan' && (trip.value?.approval_level ?? 1) < 2,
+)
 
 const formatCurrencyOrDash = (value: number | null | undefined) =>
   value === null || value === undefined ? '—' : formatCurrency(value)
@@ -244,6 +250,16 @@ onMounted(async () => {
 .page-header h1 { margin: 3px 0 6px; color: var(--text); font-size: 24px; }
 .page-header p { margin: 0; color: var(--text-muted); font-size: 12px; }
 .eyebrow { color: var(--text-muted); font-size: 11px !important; }
+.level-note {
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid #dbe4ff;
+  border-radius: 8px;
+  background: #f4f7ff;
+  color: var(--primary);
+  font-size: 11px;
+  line-height: 1.5;
+}
 .status { display: inline-block; padding: 7px 10px; border-radius: 20px; background: #edf1f7; color: #667085; font-size: 10px; white-space: nowrap; }
 .status.approved { background: #e8f7ef; color: #15803d; }
 .status.rejected { background: #fdecec; color: #b42318; }

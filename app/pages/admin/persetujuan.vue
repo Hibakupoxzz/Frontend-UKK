@@ -4,7 +4,7 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Persetujuan</strong>
     </div>
 
@@ -98,6 +98,10 @@
             Tanggal: {{ request.date }}
           </p>
 
+          <p v-if="request.levelLabel" class="level">
+            {{ request.levelLabel }}
+          </p>
+
         </div>
 
         <!-- Action -->
@@ -181,6 +185,7 @@ interface ApprovalRequest {
   status: TripStatus
   statusLabel: string
   statusClass: string
+  levelLabel: string | null
   initial: string
   avatarClass: string
 }
@@ -224,6 +229,7 @@ const requests = computed<ApprovalRequest[]>(() => trips.value.map((trip) => ({
   status: trip.status,
   statusLabel: trip.statusLabel ?? tripStatusLabel(trip.status),
   statusClass: tripStatusClass(trip.status),
+  levelLabel: trip.status === 'diajukan' ? (trip.approval_level_label ?? null) : null,
   initial: (trip.user?.name ?? '?').charAt(0).toUpperCase(),
   avatarClass: avatarClass(trip.user?.name ?? '?'),
 })))
@@ -648,6 +654,23 @@ onMounted(() => {
 
   font-size: 8px;
   color: #9aa4b5;
+}
+
+.level {
+  margin: 4px 0 0;
+
+  display: inline-block;
+
+  padding: 3px 8px;
+
+  border-radius: 4px;
+
+  background: #eef2ff;
+
+  color: var(--primary);
+
+  font-size: 8px;
+  font-weight: 600;
 }
 
 /* =========================

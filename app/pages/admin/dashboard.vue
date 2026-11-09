@@ -38,25 +38,25 @@
       <DashboardSummaryCard
         title="Total Perjalanan"
         :value="metric(summary?.total_perjalanan)"
-        icon="✈"
+        icon="plane"
       />
 
       <DashboardSummaryCard
         title="Menunggu Persetujuan"
         :value="metric(summary?.per_status?.diajukan)"
-        icon="◷"
+        icon="clock"
       />
 
       <DashboardSummaryCard
         title="Dalam Perjalanan"
         :value="metric(summary?.per_status?.berjalan)"
-        icon="➤"
+        icon="navigation"
       />
 
       <DashboardSummaryCard
         title="Selesai"
         :value="metric(summary?.per_status?.selesai)"
-        icon="✓"
+        icon="check-circle"
       />
     </div>
 
@@ -173,13 +173,14 @@
         v-if="recentActivities.length"
         class="activity-list"
       >
-        <div
+        <NuxtLink
           v-for="activity in recentActivities"
           :key="activity.id"
           class="activity-item"
+          :to="{ path: '/admin/DetailPerjalanan', query: { id: activity.tripId } }"
         >
           <div class="activity-icon">
-            {{ activity.icon }}
+            <AppIcon :name="activity.icon" />
           </div>
 
           <div class="activity-info">
@@ -196,7 +197,7 @@
           <span class="activity-time">
             {{ activity.time }}
           </span>
-        </div>
+        </NuxtLink>
       </div>
 
       <p
@@ -206,6 +207,8 @@
         Belum ada aktivitas terbaru.
       </p>
     </div>
+
+    <DashboardTripCalendar :trip-link="(id) => ({ path: '/admin/DetailPerjalanan', query: { id } })" />
 
   </div>
 </template>
@@ -283,22 +286,61 @@ const hasChartData = computed(() => {
 const statusIcon = (status: TripStatus): string => {
   switch (status) {
     case 'diajukan':
-      return '◷'
+      return 'clock'
     case 'disetujui':
-      return '✓'
+      return 'check-circle'
     case 'ditolak':
-      return '✕'
+      return 'x-circle'
     case 'berjalan':
-      return '➤'
+      return 'navigation'
     case 'selesai':
     case 'lengkap':
-      return '✓'
+      return 'check-circle'
     default:
-      return '✎'
+      return 'pencil'
+  }
+}
+
+const activityIcon = (kind: string): string => {
+  switch (kind) {
+    case 'approval':
+      return 'check-circle'
+    case 'payment':
+      return 'credit-card'
+    default:
+      return 'pencil'
+  }
+}
+
+const activityClass = (tone: string): string => {
+  switch (tone) {
+    case 'success':
+      return 'approved'
+    case 'danger':
+      return 'rejected'
+    case 'warning':
+      return 'waiting'
+    default:
+      return 'ongoing'
   }
 }
 
 const recentActivities = computed(() => {
+  const activities = summary.value?.aktivitas_terbaru ?? []
+
+  if (activities.length > 0) {
+    return activities.slice(0, 8).map((activity) => ({
+      id: activity.id,
+      icon: activityIcon(activity.kind),
+      title: activity.detail ? `${activity.title} — ${activity.detail}` : activity.title,
+      status: activity.kind === 'approval' ? 'Keputusan' : activity.kind === 'payment' ? 'Pembayaran' : 'Pengajuan',
+      statusClass: activityClass(activity.tone),
+      time: formatDate(activity.at),
+      tripId: activity.trip_id,
+    }))
+  }
+
+  // Fallback bila API lama belum mengembalikan aktivitas.
   return (summary.value?.terbaru ?? []).slice(0, 5).map((trip: Trip) => ({
     id: trip.id,
     icon: statusIcon(trip.status),
@@ -306,6 +348,7 @@ const recentActivities = computed(() => {
     status: trip.status_label || tripStatusLabel(trip.status),
     statusClass: tripStatusClass(trip.status),
     time: formatDate(trip.created_at),
+    tripId: trip.id,
   }))
 })
 
@@ -676,6 +719,12 @@ const upcomingTrips = computed(() => {
   min-height: 52px;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+}
+
+.activity-item[href]:hover .activity-info p {
+  color: var(--primary);
 }
 
 .activity-item:last-child {
@@ -691,7 +740,8 @@ const upcomingTrips = computed(() => {
   margin-right: 12px;
   background: #eef3ff;
   border-radius: 50%;
-  font-size: 13px;
+  color: var(--primary);
+  font-size: 16px;
 }
 
 .activity-info {

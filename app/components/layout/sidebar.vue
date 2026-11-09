@@ -34,9 +34,7 @@
         aria-label="Tutup menu navigasi"
         @click="$emit('close')"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z" />
-        </svg>
+        <AppIcon name="x" class="close-icon" />
       </button>
     </div>
 
@@ -51,9 +49,7 @@
           :class="{ 'router-link-active': isActive(item) }"
           @click="$emit('close')"
         >
-          <svg viewBox="0 0 24 24" class="menu-icon" aria-hidden="true">
-            <path :d="item.icon" />
-          </svg>
+          <AppIcon :name="item.icon" class="menu-icon" />
           <span>{{ item.label }}</span>
         </NuxtLink>
       </nav>
@@ -187,7 +183,6 @@ onMounted(() => {
 .sidebar-close svg {
   width: 18px;
   height: 18px;
-  fill: currentColor;
 }
 
 /* MENU */
@@ -220,11 +215,11 @@ onMounted(() => {
 }
 
 .menu-icon {
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
 
-  fill: currentColor;
+  stroke-width: 1.9;
 }
 
 .menu-item:hover {

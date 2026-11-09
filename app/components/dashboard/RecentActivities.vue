@@ -18,7 +18,7 @@
         class="activity-item"
       >
         <div class="activity-icon">
-          {{ activity.icon }}
+          <AppIcon :name="activity.icon" />
         </div>
 
         <div class="activity-info">
@@ -44,7 +44,7 @@
 const activities = [
   {
     id: 1,
-    icon: '🕐',
+    icon: 'clock',
     title: 'Pengajuan perjalanan dinas ke Jakarta - Bandung',
     status: 'Menunggu Persetujuan',
     statusClass: 'waiting',
@@ -52,7 +52,7 @@ const activities = [
   },
   {
     id: 2,
-    icon: '✓',
+    icon: 'check-circle',
     title: 'Perjalanan dinas Semarang selesai & laporan diunggah',
     status: 'Selesai',
     statusClass: 'completed',
@@ -60,7 +60,7 @@ const activities = [
   },
   {
     id: 3,
-    icon: '▣',
+    icon: 'receipt',
     title: 'Reimbursement akomodasi Surabaya disetujui pihak keuangan',
     status: 'Disetujui',
     statusClass: 'approved',
@@ -132,7 +132,8 @@ const activities = [
   margin-right: 12px;
   background: #eef3ff;
   border-radius: 50%;
-  font-size: 13px;
+  color: var(--primary);
+  font-size: 16px;
 }
 
 .activity-info {

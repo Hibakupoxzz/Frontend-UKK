@@ -1,6 +1,8 @@
 <template>
   <article class="metric-card">
-    <div class="metric-icon" aria-hidden="true">{{ icon }}</div>
+    <div class="metric-icon" aria-hidden="true">
+      <AppIcon :name="icon" />
+    </div>
     <div class="metric-copy">
       <p>{{ title }}</p>
       <strong>{{ value }}</strong>
@@ -38,7 +40,7 @@ defineProps<{
   border-radius: 10px;
   background: #eaf0ff;
   color: var(--primary);
-  font-size: 19px;
+  font-size: 20px;
 }
 
 .metric-copy {

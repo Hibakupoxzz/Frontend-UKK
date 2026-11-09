@@ -2,7 +2,7 @@
   <div class="summary-card">
 
     <div class="card-icon">
-      {{ icon }}
+      <AppIcon :name="icon" />
     </div>
 
     <div class="card-content">
@@ -67,7 +67,8 @@ defineProps({
   background: #edf3ff;
   border-radius: 10px;
 
-  font-size: 20px;
+  color: var(--primary);
+  font-size: 22px;
 }
 
 /* TEXT */

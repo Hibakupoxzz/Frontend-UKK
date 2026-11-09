@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/hrd/dashboard">HRD</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Data Pegawai</strong>
     </div>
 
@@ -19,7 +19,7 @@
       <div class="filter-group search-group">
         <label>Cari Pegawai / ID</label>
         <div class="search-input">
-          <svg viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 0 4.08 11.56l4.43 4.43 1.41-1.41-4.43-4.43A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
+          <AppIcon name="search" />
           <input v-model="search" type="text" placeholder="Cari pegawai..." />
         </div>
       </div>
@@ -259,7 +259,7 @@ onMounted(() => {
   height: 31px; display: flex; align-items: center;
   border: 1px solid #dce2eb; border-radius: 6px; background: var(--white);
 }
-.search-input svg, .date-input svg { width: 14px; height: 14px; margin: 0 8px; fill: #718096; flex-shrink: 0; }
+.search-input svg, .date-input svg { width: 14px; height: 14px; margin: 0 8px; color: #718096; flex-shrink: 0; }
 .search-input input, .date-input input, .filter-group select {
   width: 100%; height: 31px; box-sizing: border-box;
   border: 1px solid #dce2eb; border-radius: 6px;

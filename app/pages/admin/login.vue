@@ -67,7 +67,7 @@
                 aria-label="Tampilkan atau sembunyikan password"
                 @click="showPassword = !showPassword"
               >
-                {{ showPassword ? '◉' : '◌' }}
+                <AppIcon :name="showPassword ? 'eye-off' : 'eye'" />
               </button>
             </div>
           </div>

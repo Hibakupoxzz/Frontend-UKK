@@ -2,9 +2,9 @@
   <div class="detail-page">
     <div class="breadcrumb">
       <NuxtLink to="/admin/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/admin/perjalanan-dinas">Perjalanan Dinas</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Detail</strong>
     </div>
 
@@ -14,9 +14,23 @@
         <p v-if="trip">TRV-{{ trip.id }} · {{ trip.tujuan }}</p>
       </div>
 
-      <NuxtLink to="/admin/perjalanan-dinas" class="back-button">
-        ← Kembali
-      </NuxtLink>
+      <div class="header-actions">
+        <template v-if="canPrint">
+          <button type="button" class="print-button" :disabled="printingDoc" @click="printDoc('spt')">
+            {{ printingDoc ? '...' : 'Cetak SPT' }}
+          </button>
+          <button type="button" class="print-button" :disabled="printingDoc" @click="printDoc('spd')">
+            {{ printingDoc ? '...' : 'Cetak SPD' }}
+          </button>
+          <button type="button" class="print-button outline" :disabled="printingDoc" @click="saveCalendar">
+            {{ printingDoc ? '...' : 'Kalender' }}
+          </button>
+        </template>
+        <NuxtLink to="/admin/perjalanan-dinas" class="back-button">
+          <AppIcon name="arrow-left" />
+          Kembali
+        </NuxtLink>
+      </div>
     </div>
 
     <div v-if="!tripId" class="state-card error" role="alert">
@@ -28,6 +42,9 @@
     <template v-else-if="trip">
       <div v-if="actionError" class="data-error" role="alert">{{ actionError }}</div>
       <div v-if="actionMessage" class="data-success" role="status">{{ actionMessage }}</div>
+      <div v-if="trip.is_archived" class="archived-banner" role="status">
+        Perjalanan ini berada dalam arsip dan disembunyikan dari daftar aktif.
+      </div>
 
       <section class="summary-card">
         <div class="summary-main">
@@ -74,9 +91,56 @@
             <dt>Status</dt>
             <dd>{{ tripStatusLabel(trip.status) }}</dd>
           </div>
+          <div v-if="trip.status === 'diajukan'">
+            <dt>Tahap Persetujuan</dt>
+            <dd>{{ trip.approval_level_label ?? '—' }}</dd>
+          </div>
+          <div v-if="trip.verification_code">
+            <dt>Kode Verifikasi</dt>
+            <dd>{{ trip.verification_code }}</dd>
+          </div>
           <div>
             <dt>Estimasi Anggaran</dt>
-            <dd>{{ formatCurrencyOrDash(trip.estimasi_biaya) }}</dd>
+            <dd>
+              <template v-if="!editingEstimate">
+                {{ formatCurrencyOrDash(trip.estimasi_biaya) }}
+                <button
+                  v-if="isAdmin"
+                  type="button"
+                  class="text-button"
+                  @click="startEstimateEdit"
+                >
+                  Koreksi
+                </button>
+              </template>
+              <span v-else class="estimate-editor">
+                <span class="currency-prefix">Rp</span>
+                <input
+                  v-model.number="estimateDraft"
+                  type="number"
+                  min="0"
+                  step="1000"
+                  placeholder="0"
+                  :disabled="estimateLoading"
+                />
+                <button
+                  type="button"
+                  class="primary-button small"
+                  :disabled="estimateLoading"
+                  @click="saveEstimate"
+                >
+                  {{ estimateLoading ? '...' : 'Simpan' }}
+                </button>
+                <button
+                  type="button"
+                  class="secondary-button small"
+                  :disabled="estimateLoading"
+                  @click="cancelEstimateEdit"
+                >
+                  Batal
+                </button>
+              </span>
+            </dd>
           </div>
           <div>
             <dt>Realisasi Biaya</dt>
@@ -190,6 +254,7 @@
                 <th>Keterangan</th>
                 <th>Jumlah</th>
                 <th>Bukti</th>
+                <th v-if="canCorrectExpenses">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -213,11 +278,103 @@
                   </div>
                   <span v-else class="empty-text">Belum ada</span>
                 </td>
+                <td v-if="canCorrectExpenses">
+                  <button
+                    type="button"
+                    class="text-danger"
+                    :disabled="expenseLoading"
+                    @click="handleExpenseDelete(expense.id)"
+                  >
+                    Hapus
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <form v-if="canCorrectExpenses" class="expense-form" @submit.prevent="handleExpenseCreate">
+          <h3>Koreksi admin: tambah pengeluaran</h3>
+          <p v-if="expenseError" class="form-message error" role="alert">{{ expenseError }}</p>
+          <div class="expense-grid">
+            <select v-model="expenseForm.jenis" :disabled="expenseLoading" aria-label="Jenis pengeluaran">
+              <option value="transportasi">Transportasi</option>
+              <option value="penginapan">Penginapan</option>
+              <option value="konsumsi">Konsumsi</option>
+              <option value="lainnya">Lainnya</option>
+            </select>
+            <input
+              v-model="expenseForm.tanggal"
+              type="date"
+              :disabled="expenseLoading"
+              aria-label="Tanggal pengeluaran"
+              required
+            />
+            <input
+              v-model.number="expenseForm.jumlah"
+              type="number"
+              min="1"
+              step="100"
+              placeholder="Jumlah (Rp)"
+              :disabled="expenseLoading"
+              aria-label="Jumlah pengeluaran"
+              required
+            />
+            <input
+              v-model="expenseForm.keterangan"
+              type="text"
+              placeholder="Keterangan (opsional)"
+              :disabled="expenseLoading"
+              aria-label="Keterangan pengeluaran"
+            />
+          </div>
+          <button type="submit" class="primary-button small" :disabled="expenseLoading">
+            {{ expenseLoading ? 'Menyimpan...' : 'Tambah Pengeluaran' }}
+          </button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Pemesanan</h2>
+          <NuxtLink to="/admin/pemesanan" class="panel-link">Kelola pemesanan</NuxtLink>
+        </div>
+
+        <p v-if="!trip.bookings?.length" class="empty-text">Belum ada pemesanan tiket atau penginapan.</p>
+        <div v-else class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Jenis</th>
+                <th>Vendor / Kode</th>
+                <th>Tanggal</th>
+                <th>Harga</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(booking, index) in trip.bookings" :key="booking.id">
+                <td>{{ index + 1 }}</td>
+                <td>{{ booking.jenis_label }}</td>
+                <td>
+                  {{ booking.vendor_name ?? booking.vendor ?? '—' }}
+                  <span v-if="booking.kode_booking" class="booking-code">{{ booking.kode_booking }}</span>
+                </td>
+                <td>{{ formatDate(booking.tanggal) }}</td>
+                <td>{{ formatCurrency(booking.harga) }}</td>
+                <td>
+                  <span class="status-badge" :class="bookingStatusClass(booking.status)">
+                    {{ booking.status_label }}
+                  </span>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
+
+      <TripComments v-if="trip" :trip-id="trip.id" />
 
       <section class="panel">
         <div class="panel-heading">
@@ -320,14 +477,34 @@
         >
           {{ actionLoading ? 'Memproses...' : 'Tandai Lengkap' }}
         </button>
+
+        <button
+          v-if="canArchive && !trip.is_archived"
+          type="button"
+          class="secondary-button"
+          :disabled="actionLoading"
+          @click="handleArchive"
+        >
+          {{ actionLoading ? 'Memproses...' : 'Arsipkan' }}
+        </button>
+
+        <button
+          v-if="canArchive && trip.is_archived"
+          type="button"
+          class="secondary-button"
+          :disabled="actionLoading"
+          @click="handleUnarchive"
+        >
+          {{ actionLoading ? 'Memproses...' : 'Kembalikan dari Arsip' }}
+        </button>
       </section>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import type { Trip, TripDocument } from '~/types/api'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import type { ExpenseType, Trip, TripDocument } from '~/types/api'
 import { useTrips } from '~/composables/useTrips'
 import { useExpenses } from '~/composables/useExpenses'
 import { useApprovals } from '~/composables/useApprovals'
@@ -350,11 +527,16 @@ const {
   loading,
   error,
   fetchTrip,
+  updateTrip,
   submitTrip,
   startTrip,
   finishTrip,
+  archiveTrip,
+  unarchiveTrip,
   uploadDocument,
   deleteDocument,
+  downloadDocument,
+  downloadCalendar,
 } = useTrips()
 
 const {
@@ -362,6 +544,8 @@ const {
   totalBiaya,
   loading: expensesLoading,
   fetchExpenses,
+  createExpense,
+  deleteExpense,
 } = useExpenses()
 
 const { approve, reject, complete } = useApprovals()
@@ -370,6 +554,41 @@ const trip = ref<Trip | null>(null)
 const actionLoading = ref(false)
 const actionError = ref('')
 const actionMessage = ref('')
+const printingDoc = ref(false)
+
+const canPrint = computed(() =>
+  !!trip.value && ['disetujui', 'berjalan', 'selesai', 'lengkap'].includes(trip.value.status),
+)
+
+const printDoc = async (kind: 'spt' | 'spd') => {
+  if (!trip.value || printingDoc.value) return
+
+  printingDoc.value = true
+  resetFeedback()
+
+  try {
+    await downloadDocument(trip.value.id, kind)
+  } catch (err) {
+    actionError.value = apiErrorMessage(err, 'Gagal mengunduh dokumen.')
+  } finally {
+    printingDoc.value = false
+  }
+}
+
+const saveCalendar = async () => {
+  if (!trip.value || printingDoc.value) return
+
+  printingDoc.value = true
+  resetFeedback()
+
+  try {
+    await downloadCalendar(trip.value.id)
+  } catch (err) {
+    actionError.value = apiErrorMessage(err, 'Gagal mengunduh kalender.')
+  } finally {
+    printingDoc.value = false
+  }
+}
 
 const rejecting = ref(false)
 const rejectNote = ref('')
@@ -384,6 +603,19 @@ const needLabel = (jenis: string) => {
   if (jenis === 'transportasi') return 'Transportasi'
   if (jenis === 'penginapan') return 'Penginapan'
   return jenis
+}
+
+const bookingStatusClass = (status: string) => {
+  switch (status) {
+    case 'dikonfirmasi':
+      return 'approved'
+    case 'selesai':
+      return 'completed'
+    case 'dibatalkan':
+      return 'rejected'
+    default:
+      return 'waiting'
+  }
 }
 
 const initial = computed(() => (trip.value?.user?.name || '?').charAt(0).toUpperCase())
@@ -409,15 +641,39 @@ const duration = computed(() => {
 })
 
 const isOwner = computed(() => !!user.value && String(user.value.id) === String(trip.value?.user?.id))
+const isAdmin = computed(() => user.value?.role === 'admin')
+
+// Koreksi admin: estimasi dapat diubah kapan pun; pengeluaran saat berjalan/selesai/lengkap.
+const canCorrectExpenses = computed(() =>
+  isAdmin.value && ['berjalan', 'selesai', 'lengkap'].includes(trip.value?.status ?? ''),
+)
+
+const editingEstimate = ref(false)
+const estimateDraft = ref<number | ''>('')
+const estimateLoading = ref(false)
+
+const expenseLoading = ref(false)
+const expenseError = ref('')
+const expenseForm = reactive({
+  jenis: 'transportasi' as ExpenseType,
+  tanggal: '',
+  jumlah: '' as number | '',
+  keterangan: '',
+})
 
 const canSubmit = computed(() => isOwner.value && ['draft', 'ditolak'].includes(trip.value?.status ?? ''))
 const canStart = computed(() => isOwner.value && trip.value?.status === 'disetujui')
 const canFinish = computed(() => isOwner.value && trip.value?.status === 'berjalan')
 const canApprove = computed(() => !isOwner.value && trip.value?.status === 'diajukan')
 const canComplete = computed(() => !isOwner.value && trip.value?.status === 'selesai')
+const canArchive = computed(() =>
+  (isOwner.value || isAdmin.value)
+  && !!trip.value
+  && ['selesai', 'lengkap'].includes(trip.value.status),
+)
 
 const hasActions = computed(() =>
-  canSubmit.value || canStart.value || canFinish.value || canApprove.value || canComplete.value
+  canSubmit.value || canStart.value || canFinish.value || canApprove.value || canComplete.value || canArchive.value
 )
 
 const load = async () => {
@@ -462,6 +718,99 @@ const handleStart = () => runAction(() => startTrip(tripId.value), 'Perjalanan d
 const handleFinish = () => runAction(() => finishTrip(tripId.value), 'Perjalanan diselesaikan.')
 const handleComplete = () => runAction(() => complete(tripId.value), 'Perjalanan ditandai lengkap.')
 const handleApprove = () => runAction(() => approve(tripId.value), 'Pengajuan disetujui.')
+
+const handleArchive = () => runAction(() => archiveTrip(tripId.value), 'Perjalanan diarsipkan.')
+const handleUnarchive = () => runAction(() => unarchiveTrip(tripId.value), 'Perjalanan dikembalikan ke daftar aktif.')
+
+const startEstimateEdit = () => {
+  resetFeedback()
+  estimateDraft.value = trip.value?.estimasi_biaya ?? ''
+  editingEstimate.value = true
+}
+
+const cancelEstimateEdit = () => {
+  editingEstimate.value = false
+}
+
+const saveEstimate = async () => {
+  if (!trip.value) return
+
+  const value = estimateDraft.value === '' ? null : Number(estimateDraft.value)
+
+  if (value !== null && (!Number.isFinite(value) || value < 0)) {
+    actionError.value = 'Estimasi biaya tidak valid.'
+    return
+  }
+
+  estimateLoading.value = true
+  resetFeedback()
+
+  try {
+    await updateTrip(trip.value.id, {
+      tujuan: trip.value.tujuan,
+      tanggal_berangkat: trip.value.tanggal_berangkat,
+      tanggal_pulang: trip.value.tanggal_pulang,
+      keperluan: trip.value.keperluan,
+      estimasi_biaya: value,
+    })
+    editingEstimate.value = false
+    await refresh()
+    actionMessage.value = 'Estimasi berhasil dikoreksi.'
+  } catch (err) {
+    actionError.value = apiErrorMessage(err, 'Gagal mengoreksi estimasi.')
+  } finally {
+    estimateLoading.value = false
+  }
+}
+
+const handleExpenseCreate = async () => {
+  if (!trip.value) return
+
+  const jumlah = Number(expenseForm.jumlah)
+
+  if (!expenseForm.tanggal || !Number.isFinite(jumlah) || jumlah <= 0) {
+    expenseError.value = 'Tanggal dan jumlah wajib diisi dengan benar.'
+    return
+  }
+
+  expenseLoading.value = true
+  expenseError.value = ''
+
+  try {
+    await createExpense(trip.value.id, {
+      jenis: expenseForm.jenis,
+      tanggal: expenseForm.tanggal,
+      jumlah,
+      keterangan: expenseForm.keterangan.trim() || null,
+    })
+    expenseForm.tanggal = ''
+    expenseForm.jumlah = ''
+    expenseForm.keterangan = ''
+    await refresh()
+    actionMessage.value = 'Pengeluaran berhasil ditambahkan.'
+  } catch (err) {
+    expenseError.value = apiErrorMessage(err, 'Gagal menambah pengeluaran.')
+  } finally {
+    expenseLoading.value = false
+  }
+}
+
+const handleExpenseDelete = async (id: number) => {
+  if (!window.confirm('Hapus pengeluaran ini?')) return
+
+  expenseLoading.value = true
+  expenseError.value = ''
+
+  try {
+    await deleteExpense(id)
+    await refresh()
+    actionMessage.value = 'Pengeluaran dihapus.'
+  } catch (err) {
+    expenseError.value = apiErrorMessage(err, 'Gagal menghapus pengeluaran.')
+  } finally {
+    expenseLoading.value = false
+  }
+}
 
 const startReject = () => {
   resetFeedback()
@@ -605,6 +954,7 @@ watch(tripId, () => {
 .back-button {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   min-height: 34px;
   padding: 0 13px;
   border: 1px solid var(--border);
@@ -614,6 +964,51 @@ watch(tripId, () => {
   font-size: 10px;
   font-weight: 600;
   text-decoration: none;
+}
+
+.back-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.archived-banner {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid #dbe4ff;
+  border-radius: 8px;
+  background: #f4f7ff;
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.print-button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  background: var(--primary);
+  color: var(--white);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.print-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.print-button.outline {
+  background: var(--white);
+  color: var(--primary);
 }
 
 .state-card {
@@ -933,6 +1328,109 @@ watch(tripId, () => {
   font: inherit;
   font-size: 9px;
   cursor: pointer;
+}
+
+.text-button {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.text-button:hover {
+  text-decoration: underline;
+}
+
+.booking-code {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  color: #8792a5;
+}
+
+.estimate-editor {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.estimate-editor .currency-prefix {
+  color: #8d97a8;
+  font-size: 10px;
+}
+
+.estimate-editor input {
+  width: 130px;
+  padding: 5px 8px;
+  border: 1px solid #dce2eb;
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  outline: none;
+}
+
+.estimate-editor input:focus {
+  border-color: var(--primary);
+}
+
+.primary-button.small,
+.secondary-button.small {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 9px;
+}
+
+.expense-form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #edf0f4;
+}
+
+.expense-form h3 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.expense-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.expense-grid select,
+.expense-grid input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid #dce2eb;
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  outline: none;
+}
+
+.expense-grid select:focus,
+.expense-grid input:focus {
+  border-color: var(--primary);
+}
+
+@media (max-width: 640px) {
+  .expense-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .approval-list li {

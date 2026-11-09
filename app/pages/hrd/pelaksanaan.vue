@@ -3,9 +3,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/hrd/dashboard">HRD</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Pelaksanaan Perjalanan</strong>
     </div>
 
@@ -17,28 +17,28 @@
     <!-- Summary Stats -->
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-icon cyan">▣</div>
+        <div class="stat-icon cyan"><AppIcon name="receipt" /></div>
         <div>
           <p>Total Perjalanan</p>
           <h2>{{ totalTrips }}</h2>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon orange">⏳</div>
+        <div class="stat-icon orange"><AppIcon name="hourglass" /></div>
         <div>
           <p>Menunggu Persetujuan</p>
           <h2>{{ pendingCount }}</h2>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon green">✅</div>
+        <div class="stat-icon green"><AppIcon name="check-circle" /></div>
         <div>
           <p>Selesai</p>
           <h2>{{ completedCount }}</h2>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon blue">▶</div>
+        <div class="stat-icon blue"><AppIcon name="navigation" /></div>
         <div>
           <p>Sedang Berlangsung</p>
           <h2>{{ ongoingCount }}</h2>
@@ -53,7 +53,7 @@
       <div class="filter-group search-group">
         <label>Cari Pegawai / Tujuan</label>
         <div class="search-input">
-          <svg viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 0 4.08 11.56l4.43 4.43 1.41-1.41-4.43-4.43A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"/></svg>
+          <AppIcon name="search" />
           <input v-model="search" type="text" placeholder="Cari..." />
         </div>
       </div>
@@ -157,22 +157,27 @@
 
       <!-- Pagination -->
       <div class="table-footer">
-        <span class="showing-text">Menampilkan {{ filteredTrips.length }} dari {{ trips.length }} data</span>
+        <span class="showing-text">Menampilkan {{ filteredTrips.length }} dari {{ meta?.total ?? filteredTrips.length }} data</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import type { TripQuery } from '~/types/api'
 import { useTrips } from '~/composables/useTrips'
+import { useDashboard } from '~/composables/useDashboard'
 import { formatDate, tripStatusClass, tripStatusLabel } from '~/utils/format'
 
 const search = ref('')
 const selectedStatus = ref('')
 const selectedDepartment = ref('')
 
-const { trips, loading, error, fetchTrips } = useTrips()
+const { trips, meta, loading, error, fetchTrips } = useTrips()
+const { summary, fetchDashboard } = useDashboard()
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const departmentOptions = computed(() => {
   const values = new Set<string>()
@@ -181,40 +186,51 @@ const departmentOptions = computed(() => {
     if (trip.user?.department) values.add(trip.user.department)
   }
 
+  // Pertahankan pilihan aktif walau server memfilter baris yang tampil.
+  if (selectedDepartment.value) values.add(selectedDepartment.value)
+
   return Array.from(values).sort((a, b) => a.localeCompare(b))
 })
 
-const statusMatches = (status: string, filter: string) => {
-  if (!filter) return true
-  if (filter === 'selesai') return status === 'selesai' || status === 'lengkap'
-  return status === filter
+// Filter berjalan di server; status "selesai" mencakup "lengkap".
+const filteredTrips = computed(() => trips.value)
+
+const perStatus = computed(() => summary.value?.per_status)
+
+const totalTrips = computed(() => summary.value?.total_perjalanan ?? trips.value.length)
+const pendingCount = computed(
+  () => perStatus.value?.diajukan ?? trips.value.filter((trip) => trip.status === 'diajukan').length,
+)
+const completedCount = computed(
+  () => (perStatus.value ? (perStatus.value.selesai + perStatus.value.lengkap) : trips.value.filter((trip) => trip.status === 'selesai' || trip.status === 'lengkap').length),
+)
+const ongoingCount = computed(
+  () => perStatus.value?.berjalan ?? trips.value.filter((trip) => trip.status === 'berjalan').length,
+)
+
+const reload = async () => {
+  await fetchTrips({
+    per_page: 100,
+    q: search.value.trim() || undefined,
+    status: (selectedStatus.value || undefined) as TripQuery['status'],
+    department: selectedDepartment.value || undefined,
+  }).catch(() => {})
 }
 
-const filteredTrips = computed(() => {
-  const query = search.value.trim().toLowerCase()
-
-  return trips.value.filter((trip) => {
-    const searchMatch = !query
-      || (trip.user?.name ?? '').toLowerCase().includes(query)
-      || trip.tujuan.toLowerCase().includes(query)
-
-    const statusMatch = statusMatches(trip.status, selectedStatus.value)
-    const deptMatch = !selectedDepartment.value || trip.user?.department === selectedDepartment.value
-
-    return searchMatch && statusMatch && deptMatch
-  })
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    void reload()
+  }, 400)
 })
 
-const totalTrips = computed(() => trips.value.length)
-const pendingCount = computed(() => trips.value.filter((trip) => trip.status === 'diajukan').length)
-const completedCount = computed(
-  () => trips.value.filter((trip) => trip.status === 'selesai' || trip.status === 'lengkap').length,
-)
-const ongoingCount = computed(() => trips.value.filter((trip) => trip.status === 'berjalan').length)
+watch([selectedStatus, selectedDepartment], () => {
+  void reload()
+})
 
 onMounted(async () => {
   try {
-    await fetchTrips({ per_page: 100 })
+    await Promise.all([reload(), fetchDashboard()])
   } catch {
     // pesan error sudah disimpan oleh composable
   }
@@ -308,7 +324,7 @@ onMounted(async () => {
   height: 31px; display: flex; align-items: center;
   border: 1px solid #dce2eb; border-radius: 6px; background: var(--white);
 }
-.search-input svg, .date-input svg { width: 14px; height: 14px; margin: 0 8px; fill: #718096; flex-shrink: 0; }
+.search-input svg, .date-input svg { width: 14px; height: 14px; margin: 0 8px; color: #718096; flex-shrink: 0; }
 .search-input input, .date-input input, .filter-group select {
   width: 100%; height: 31px; box-sizing: border-box;
   border: 1px solid #dce2eb; border-radius: 6px;

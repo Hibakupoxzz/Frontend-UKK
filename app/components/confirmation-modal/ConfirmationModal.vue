@@ -20,9 +20,7 @@
             aria-label="Tutup"
             @click="$emit('cancel')"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z" />
-            </svg>
+            <AppIcon name="x" />
           </button>
         </header>
 
@@ -169,7 +167,6 @@ onBeforeUnmount(() => {
 .modal-close svg {
   width: 16px;
   height: 16px;
-  fill: currentColor;
 }
 
 .modal-body {

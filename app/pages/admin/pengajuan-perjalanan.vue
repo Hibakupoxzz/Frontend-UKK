@@ -4,9 +4,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <span>Pengajuan Perjalanan</span>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Buat Baru</strong>
     </div>
 
@@ -14,7 +14,7 @@
     <div class="page-title">
       <div class="back">
       
-      <h1><NuxtLink to="/dashboard" class="back-icon">←             Pengajuan Perjalanan Dinas</NuxtLink></h1>
+      <h1><NuxtLink to="/dashboard" class="back-icon"><AppIcon name="arrow-left" /><span>Pengajuan Perjalanan Dinas</span></NuxtLink></h1>
       </div>
       <LayoutPageactions />
 
@@ -53,7 +53,7 @@
                 type="date"
                 :min="today"
               />
-              <span>▣</span>
+              <span><AppIcon name="calendar" /></span>
             </div>
           </div>
 
@@ -68,7 +68,7 @@
                 type="date"
                 :min="form.tanggal_berangkat || today"
               />
-              <span>▣</span>
+              <span><AppIcon name="calendar" /></span>
             </div>
           </div>
 

@@ -4,9 +4,9 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <NuxtLink to="/admin/reimbursement">Reimbursement</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Ajukan Baru</strong>
     </div>
 
@@ -140,7 +140,7 @@
                   type="button"
                   @click="removeFile"
                 >
-                  ×
+                  <AppIcon name="x" />
                 </button>
               </div>
 

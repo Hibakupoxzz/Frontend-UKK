@@ -4,7 +4,7 @@
     <!-- Breadcrumb -->
     <div class="breadcrumb">
       <NuxtLink to="/dashboard">Dashboard</NuxtLink>
-      <span>›</span>
+      <AppIcon name="chevron-right" class="crumb-sep" />
       <strong>Pengaturan</strong>
     </div>
 
@@ -40,6 +40,8 @@
           <div v-if="profileMessage" class="form-message success" role="status">{{ profileMessage }}</div>
           <div v-if="photoError" class="form-message error" role="alert">{{ photoError }}</div>
           <div v-if="photoMessage" class="form-message success" role="status">{{ photoMessage }}</div>
+          <div v-if="signatureError" class="form-message error" role="alert">{{ signatureError }}</div>
+          <div v-if="signatureMessage" class="form-message success" role="status">{{ signatureMessage }}</div>
 
           <div class="profile-info">
 
@@ -69,6 +71,35 @@
                   Hapus
                 </button>
               </div>
+            </div>
+
+            <div class="avatar-block">
+              <div class="signature-preview">
+                <img v-if="user?.signature_url" :src="user.signature_url" alt="Tanda tangan" />
+                <span v-else>TTD</span>
+              </div>
+
+              <div class="avatar-actions">
+                <label class="photo-button" :class="{ disabled: uploadingSignature }">
+                  {{ uploadingSignature ? 'Mengunggah...' : 'Tanda Tangan' }}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    :disabled="uploadingSignature"
+                    @change="handleSignature"
+                  />
+                </label>
+                <button
+                  v-if="user?.signature_url"
+                  class="text-button"
+                  type="button"
+                  :disabled="uploadingSignature"
+                  @click="removeSignature"
+                >
+                  Hapus
+                </button>
+              </div>
+              <p class="avatar-hint">JPG/PNG maks 1 MB, dipakai di SPT/SPD.</p>
             </div>
 
             <div v-if="!editingProfile" class="profile-detail">
@@ -276,6 +307,58 @@
 
           </div>
 
+          <!-- Booking -->
+          <div class="notification-item">
+
+            <div>
+              <h3>Update Pemesanan</h3>
+
+              <p>
+                Informasi ketika pemesanan tiket atau penginapan dibuat dan berubah status.
+              </p>
+            </div>
+
+            <button
+              class="toggle"
+              type="button"
+              role="switch"
+              :disabled="savingPrefs || loadingPrefs"
+              aria-label="Update Pemesanan"
+              :aria-checked="preferences.booking_updates"
+              @click="updatePreference('booking_updates')"
+              :class="{ active: preferences.booking_updates }"
+            >
+              <span></span>
+            </button>
+
+          </div>
+
+          <!-- Diskusi -->
+          <div class="notification-item">
+
+            <div>
+              <h3>Diskusi Perjalanan</h3>
+
+              <p>
+                Informasi ketika ada komentar baru pada perjalanan Anda.
+              </p>
+            </div>
+
+            <button
+              class="toggle"
+              type="button"
+              role="switch"
+              :disabled="savingPrefs || loadingPrefs"
+              aria-label="Diskusi Perjalanan"
+              :aria-checked="preferences.comment_updates"
+              @click="updatePreference('comment_updates')"
+              :class="{ active: preferences.comment_updates }"
+            >
+              <span></span>
+            </button>
+
+          </div>
+
         </section>
 
       </div>
@@ -285,8 +368,15 @@
 
         <h2>Keamanan Akun</h2>
 
+        <div v-if="user?.password_expired" class="form-message error" role="alert">
+          Password Anda sudah kedaluwarsa dan wajib diganti untuk membuka menu lain.
+        </div>
+        <div v-else-if="passwordDaysLeft !== null && passwordDaysLeft <= 7" class="form-message warning" role="status">
+          Password kedaluwarsa dalam {{ passwordDaysLeft }} hari. Segera ganti password Anda.
+        </div>
+
         <p class="card-note">
-          Gunakan minimal 8 karakter. Setelah kata sandi diubah, sesi Anda saat ini tetap aktif.
+          Gunakan minimal 8 karakter. Password berlaku 90 hari. Setelah kata sandi diubah, sesi Anda saat ini tetap aktif.
         </p>
 
         <div v-if="passwordError" class="form-message error" role="alert">{{ passwordError }}</div>
@@ -364,7 +454,7 @@ import { useNotificationPreferences } from '~/composables/useNotificationPrefere
 import { apiErrorMessage } from '~/composables/useApi'
 
 const { user, getInitials } = useAuth()
-const { fetchProfile, updateProfile, updatePassword, uploadPhoto, deletePhoto } = useProfile()
+const { fetchProfile, updateProfile, updatePassword, uploadPhoto, deletePhoto, uploadSignature, deleteSignature } = useProfile()
 const {
   preferences,
   loading: loadingPrefs,
@@ -384,6 +474,10 @@ const profileMessage = ref('')
 const uploadingPhoto = ref(false)
 const photoError = ref('')
 const photoMessage = ref('')
+
+const uploadingSignature = ref(false)
+const signatureError = ref('')
+const signatureMessage = ref('')
 
 const savingPassword = ref(false)
 const passwordError = ref('')
@@ -416,6 +510,8 @@ const roleLabel = computed(() => {
 })
 
 const initials = computed(() => (user.value?.name ? getInitials(user.value.name) : '—'))
+
+const passwordDaysLeft = computed(() => user.value?.password_expires_in_days ?? null)
 
 const fillProfileForm = () => {
   profileForm.name = user.value?.name ?? ''
@@ -519,6 +615,55 @@ const removePhoto = async () => {
   }
 }
 
+const handleSignature = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  input.value = ''
+
+  if (!file) return
+
+  signatureError.value = ''
+  signatureMessage.value = ''
+
+  if (!['image/jpeg', 'image/png'].includes(file.type)) {
+    signatureError.value = 'Format tanda tangan harus JPG atau PNG.'
+    return
+  }
+
+  if (file.size > 1024 * 1024) {
+    signatureError.value = 'Ukuran tanda tangan maksimal 1 MB.'
+    return
+  }
+
+  uploadingSignature.value = true
+
+  try {
+    await uploadSignature(file)
+    signatureMessage.value = 'Tanda tangan berhasil diperbarui dan akan tampil di SPT/SPD.'
+  } catch (err) {
+    signatureError.value = apiErrorMessage(err, 'Gagal mengunggah tanda tangan.')
+  } finally {
+    uploadingSignature.value = false
+  }
+}
+
+const removeSignature = async () => {
+  if (!window.confirm('Hapus tanda tangan?')) return
+
+  uploadingSignature.value = true
+  signatureError.value = ''
+  signatureMessage.value = ''
+
+  try {
+    await deleteSignature()
+    signatureMessage.value = 'Tanda tangan berhasil dihapus.'
+  } catch (err) {
+    signatureError.value = apiErrorMessage(err, 'Gagal menghapus tanda tangan.')
+  } finally {
+    uploadingSignature.value = false
+  }
+}
+
 const submitPassword = async () => {
   passwordError.value = ''
   passwordMessage.value = ''
@@ -551,6 +696,12 @@ const submitPassword = async () => {
     passwordForm.password = ''
     passwordForm.password_confirmation = ''
     passwordMessage.value = 'Kata sandi berhasil diubah.'
+
+    try {
+      await fetchProfile()
+    } catch {
+      // Status kedaluwarsa tetap lama bila sinkronisasi gagal; coba lagi saat reload.
+    }
   } catch (err) {
     passwordError.value = apiErrorMessage(err, 'Gagal mengubah kata sandi.')
   } finally {
@@ -776,6 +927,12 @@ onMounted(async () => {
   color: #0f7b58;
 }
 
+.form-message.warning {
+  border-color: #f3d9a4;
+  background: #fffaf0;
+  color: #9a6a08;
+}
+
 .edit-button:disabled,
 .toggle:disabled,
 .save-button:disabled,
@@ -813,7 +970,6 @@ onMounted(async () => {
   border-radius: 50%;
 
   background: #e8edf5;
-
   border: 1px solid #dce3ec;
 
   overflow: hidden;
@@ -823,6 +979,45 @@ onMounted(async () => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.signature-preview {
+  width: 58px;
+  height: 58px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px dashed #b9c4d4;
+  border-radius: 8px;
+
+  background: var(--white);
+
+  overflow: hidden;
+}
+
+.signature-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.signature-preview span {
+  color: #9aa4b5;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.avatar-hint {
+  margin: 2px 0 0;
+  max-width: 110px;
+  color: #9aa4b5;
+  font-size: 8px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .profile-avatar span {
